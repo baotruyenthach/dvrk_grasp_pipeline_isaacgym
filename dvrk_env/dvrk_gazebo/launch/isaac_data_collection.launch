@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<launch>
+    <include file="$(find isaac_dvrk_moveit_config)/launch/isaac_davinci_moveit.launch" />
+    <node name="moveit_planner_server_node" pkg="dvrk_gazebo_control" type="arm_moveit_planner_server.py" respawn="false" output = "screen" />
+</launch>

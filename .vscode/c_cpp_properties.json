@@ -1,0 +1,40 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "",
+        "limitSymbolsToIncludedHeaders": true
+      },
+      "includePath": [
+        "/home/baothach/dvrk_grasp_pipeline_issac/devel/include/**",
+        "/home/baothach/dvrk_WPI/devel/include/**",
+        "/opt/ros/melodic/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/cisst-ros/cisst_conversions/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/cisstNetlib/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/cisst-ros/cisst_ros_bridge/include/**",
+        "/home/baothach/dvrk_WPI/src/dvrk_env/dvrk_gazebo/include/**",
+        "/home/baothach/dvrk_WPI/src/dvrk_env/dvrk_gazebo_control/include/**",
+        "/home/baothach/dvrk_WPI/src/dvrk_env/dvrk_robot/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawIntuitiveDaVinci/ros/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawATIForceSensor/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawClaronMicronTracker/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawConstraintController/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawControllers/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawForceDimensionSDK/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawIntuitiveDaVinci/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawIntuitiveResearchKit/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawIntuitiveResearchKit/examples/derivedTeleOperationPSM/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawKeyboard/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawNDITracker/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawOptoforceSensor/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawRobotIO1394/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawSocketStreamer/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawTextToSpeech/components/include/**",
+        "/home/baothach/dvrk_WPI/src/cisst-saw/sawUniversalRobot/components/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS"
+    }
+  ],
+  "version": 4
+}
