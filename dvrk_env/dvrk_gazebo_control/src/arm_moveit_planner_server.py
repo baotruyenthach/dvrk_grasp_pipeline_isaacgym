@@ -128,6 +128,16 @@ class CartesianPoseMoveitPlanner:
     def go_goal_trac_ik(self, pose):
         print 'go goal'
         self.group.clear_pose_targets()
+        box_pose = geometry_msgs.msg.PoseStamped()
+        box_pose.pose.orientation.x = 0.0
+        box_pose.pose.orientation.y = 0.0
+        box_pose.pose.orientation.z = 0.0
+        box_pose.pose.orientation.w = 1.0
+        box_pose.pose.position.x = 0.0 
+        box_pose.pose.position.y = 0.3
+        box_pose.pose.position.z = 0.5 * 0.5 - 0.35
+        box_name = "box"
+        # self.scene.add_box(box_name, box_pose, size=(0.1, 0.1, 0.1))
         ik_js = self.ik_solver.get_ik(self.seed_state, pose.position.x, pose.position.y, pose.position.z,
                                         pose.orientation.x, pose.orientation.y, pose.orientation.z, 
                                         pose.orientation.w)

@@ -54,6 +54,9 @@ if sim_type is gymapi.SIM_FLEX:
     sim_params.flex.num_inner_iterations = 40
     sim_params.flex.relaxation = 0.7
     sim_params.flex.warm_start = 0.1
+    sim_params.flex.shape_collision_distance = 5e-6
+    sim_params.flex.contact_regularization = 1.0e-6
+    sim_params.flex.shape_collision_margin = 1.0e-4
 elif sim_type is gymapi.SIM_PHYSX:
     sim_params.substeps = 2
     sim_params.physx.solver_type = 1
@@ -109,7 +112,7 @@ print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
 kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
 # create box asset
-box_size = 0.045
+box_size = 0.1
 box_asset = gym.create_box(sim, box_size, box_size, box_size, asset_options)
 box_pose = gymapi.Transform()
 
@@ -337,7 +340,7 @@ while not gym.query_viewer_has_closed(viewer):
             cartesian_pose.orientation.y = 0
             cartesian_pose.orientation.z = 0
             cartesian_pose.orientation.w = 1
-            cartesian_pose.position.x = 0.0
+            cartesian_pose.position.x = 0.07
             cartesian_pose.position.y = 0.3
             cartesian_pose.position.z = -0.3
      
