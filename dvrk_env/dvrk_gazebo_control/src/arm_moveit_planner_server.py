@@ -23,7 +23,7 @@ import moveit_msgs.msg
 import moveit_commander
 
 import numpy as np
-# from trac_ik_python.trac_ik import IK
+from trac_ik_python.trac_ik import IK
 
 # from moveit_msgs.msg import RobotState
 from std_msgs.msg import Header
@@ -58,8 +58,8 @@ class CartesianPoseMoveitPlanner:
         else:
             self.home_joint_states = np.array([-0.3356692769522132, -0.18960693104623297, 0.9355599880218506, 0.045651170304702046,\
                                      0.020980324428042426, 1.7311636090617426, -0.5123334395848442, -0.4493461734062968])
-        # self.ik_solver = IK('world', 'reflex_mount')
-        # self.seed_state = [0.0] * self.ik_solver.number_of_joints
+        self.ik_solver = IK("world", "psm_tool_yaw_link")
+        self.seed_state = [0.0] * self.ik_solver.number_of_joints
 
         
     def go_home(self):

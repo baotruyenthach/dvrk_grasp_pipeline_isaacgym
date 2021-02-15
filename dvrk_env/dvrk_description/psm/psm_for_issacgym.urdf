@@ -6,7 +6,7 @@
     <child link="psm_base_link"/>
     <origin rpy="0 0 0" xyz="0 0 0.1524"/>
     <axis xyz="0 0 1"/>
-    <limit effort="1000" lower="-1.57" upper="1.57" velocity="10"/>
+    <limit effort="1000" lower="0" upper="0" velocity="10"/>
   </joint>
   <joint name="psm_yaw_joint" type="revolute">
     <parent link="psm_base_link"/>

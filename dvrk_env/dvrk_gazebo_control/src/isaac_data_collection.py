@@ -24,6 +24,7 @@ from isaacgym import gymutil
 from copy import copy
 import rospy
 from dvrk_gazebo_control.srv import *
+from geometry_msgs.msg import PoseStamped, Pose
 
 
 
@@ -81,7 +82,7 @@ if viewer is None:
 asset_root = "../../assets"
 
 pose = gymapi.Transform()
-pose.p = gymapi.Vec3(0.0, 0.0, 0.1)
+pose.p = gymapi.Vec3(0.0, 0.0, 0.35)
 #pose.r = gymapi.Quat(-0.707107, 0.0, 0.0, 0.707107)
 
 asset_options = gymapi.AssetOptions()
@@ -168,7 +169,7 @@ for i in range(num_envs):
     
     # add box
     box_pose.p.x = 0.0
-    box_pose.p.y = 0.4
+    box_pose.p.y = 0.3
     box_pose.p.z = 0.5 * box_size
     box_handle = gym.create_actor(env, box_asset, box_pose, "box", i, 0, segmentationId=1)    
  
@@ -207,7 +208,7 @@ def move_gripper(i, open_gripper = True):
     gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)    
 
 
-def arm_moveit_planner_client(go_home=False, place_goal_pose=None):
+def arm_moveit_planner_client(go_home=False, place_goal_pose=None, cartesian_pose=None):
     #bao123 
     '''
     return Is there any plan?
@@ -226,7 +227,7 @@ def arm_moveit_planner_client(go_home=False, place_goal_pose=None):
             planning_request.palm_goal_pose_world = place_goal_pose
         else:
             # planning_request.palm_goal_pose_world = self.mount_desired_world.pose
-            planning_request.palm_goal_pose_world = []
+            planning_request.palm_goal_pose_world = cartesian_pose
         planning_response = planning_proxy(planning_request) 
     except (rospy.ServiceException):
         rospy.loginfo('Service moveit_cartesian_pose_planner call failed')
@@ -310,10 +311,44 @@ while not gym.query_viewer_has_closed(viewer):
         #                              1,1], dtype=np.float32)            
         #     gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)
 
-        # 3. Test execute trajectory from MoveIt
+        # 3. Test execute trajectory from MoveIt (given joint angles)      
+        # if get_traj_from_moveit:
+        #     plan_traj = arm_moveit_planner_client(go_home=True, place_goal_pose=None)
+        #     get_traj_from_moveit = False
+        #     traj_index = 0
+        #     done = False
+        #     print(plan_traj)
+        # plan_traj_with_gripper = [plan+[1,1] for plan in plan_traj]
         
+        # if not done:
+        #     pos_targets = np.array(plan_traj_with_gripper[traj_index], dtype=np.float32)
+        #     gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)        
+        #     if check_reach_desired_position(i, pos_targets):
+        #         traj_index += 1                
+        #     if traj_index == len(plan_traj):
+        #         done = True   
+
+
+
+        # 4. Test execute trajectory from MoveIt ((given Cartesian pose) 
         if get_traj_from_moveit:
-            plan_traj = arm_moveit_planner_client(go_home=True, place_goal_pose=None)
+            cartesian_pose = Pose()
+            cartesian_pose.orientation.x = 0
+            cartesian_pose.orientation.y = 0
+            cartesian_pose.orientation.z = 0
+            cartesian_pose.orientation.w = 1
+            cartesian_pose.position.x = 0.0
+            cartesian_pose.position.y = 0.3
+            cartesian_pose.position.z = -0.3
+     
+            # cartesian_pose.orientation.x = 0.30794364345911074
+            # cartesian_pose.orientation.y = 0.6158872869182215
+            # cartesian_pose.orientation.z = 0
+            # cartesian_pose.orientation.w = 0.7251576120166157
+            # cartesian_pose.position.x = 0.0
+            # cartesian_pose.position.y = 0.3
+            # cartesian_pose.position.z = -0.3
+            plan_traj = arm_moveit_planner_client(go_home=False, place_goal_pose=None, cartesian_pose=cartesian_pose)
             get_traj_from_moveit = False
             traj_index = 0
             done = False
@@ -326,7 +361,7 @@ while not gym.query_viewer_has_closed(viewer):
             if check_reach_desired_position(i, pos_targets):
                 traj_index += 1                
             if traj_index == len(plan_traj):
-                done = True   
+                done = True  
 
         # step rendering
     gym.step_graphics(sim)
