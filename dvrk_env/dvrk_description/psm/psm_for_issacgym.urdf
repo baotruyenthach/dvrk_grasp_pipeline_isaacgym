@@ -43,7 +43,7 @@
     <child link="psm_main_insertion_link"/>
     <origin rpy="1.57079  0      -3.14158" xyz="0.03912 -0.25179  0"/>
     <axis xyz="3.00000000e-05   0.00000000e+00   1.00000000e+00"/>
-    <limit effort="1000.0" lower="0.0" upper="0.24" velocity="0.001"/>
+    <limit effort="1000.0" lower="0.0" upper="0.24" velocity="0.0000000000001"/>
   </joint>
   <joint name="psm_tool_roll_joint" type="revolute">
     <parent link="psm_main_insertion_link"/>

@@ -18,13 +18,16 @@ from __future__ import print_function, division, absolute_import
 
 import os
 import math
+import open3d
 import numpy as np
+import pickle
 from isaacgym import gymapi
 from isaacgym import gymutil
 from copy import copy
 import rospy
 from dvrk_gazebo_control.srv import *
 from geometry_msgs.msg import PoseStamped, Pose
+from test_gen_preshape import o3dpc_to_GraspObject_msg
 
 
 
@@ -71,7 +74,8 @@ sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, sim_type, 
 
 
 
-# add ground plane
+# add ground 
+
 plane_params = gymapi.PlaneParams()
 plane_params.normal = gymapi.Vec3(0, 0, 1) # z-up ground
 gym.add_ground(sim, plane_params)
@@ -86,7 +90,7 @@ if viewer is None:
 asset_root = "../../assets"
 
 pose = gymapi.Transform()
-pose.p = gymapi.Vec3(0.0, 0.0, 0.35)
+pose.p = gymapi.Vec3(0.0, 0.0, 0.9)
 #pose.r = gymapi.Quat(-0.707107, 0.0, 0.0, 0.707107)
 
 asset_options = gymapi.AssetOptions()
@@ -112,7 +116,11 @@ if sim_type is gymapi.SIM_FLEX:
 print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
 kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, asset_options)
 
-
+# Load cube asset
+asset_options.flip_visual_attachments = False
+asset_options.disable_gravity = True
+cube_asset_file = "dvrk_description/random_urdf/cube_2.urdf"
+cube_asset = gym.load_asset(sim, asset_root, cube_asset_file)
 
 # create box asset
 box_size = 0.1
@@ -177,9 +185,10 @@ for i in range(num_envs):
     box_pose.p.x = 0.0
     box_pose.p.y = 0.3
     box_pose.p.z = 0.5 * box_size
-    box_handle = gym.create_actor(env, box_asset, box_pose, "box", i, 0, segmentationId=1)    
+    # box_handle = gym.create_actor(env, box_asset, box_pose, "box", i, 0, segmentationId=1)    
  
-
+    # Add cube:
+    cube_handle = gym.create_actor(env, cube_asset, gymapi.Transform(p=gymapi.Vec3(0, 0.3, 0.3)), 'cube', i, 1, segmentationId=11)
 
     kuka_handles.append(kuka_handle)
 
@@ -249,6 +258,29 @@ def arm_moveit_planner_client(go_home=False, place_goal_pose=None, cartesian_pos
         plan_list.append(list(point.positions))
     return plan_list
 
+def gen_grasp_preshape_client():
+    with open("src/dvrk_env/dvrk_gazebo_control/src/stuff/point_cloud_box.txt", 'rb') as f:
+        points = pickle.load(f)
+
+    pcd = open3d.geometry.PointCloud()
+    pcd.points = open3d.utility.Vector3dVector(np.array(points))
+    msg = o3dpc_to_GraspObject_msg(pcd)
+
+    rospy.loginfo('Waiting for service gen_grasp_preshape.')
+    rospy.wait_for_service('gen_grasp_preshape')
+    rospy.loginfo('Calling service gen_grasp_preshape.')
+    try:
+        preshape_proxy = rospy.ServiceProxy('gen_grasp_preshape', GraspPreshape)
+        preshape_request = GraspPreshapeRequest()
+        preshape_request.obj = msg
+
+        preshape_response = preshape_proxy(preshape_request) 
+    except (rospy.ServiceException):
+        rospy.loginfo('Service gen_grasp_preshape call failed:')
+    rospy.loginfo('Service gen_grasp_preshape is executed.')
+    return preshape_response
+
+
 def check_reach_desired_position(i, desired_position):
     '''
     Check if the robot has reached the desired goal positions
@@ -261,39 +293,14 @@ def check_reach_desired_position(i, desired_position):
     # absolute(a - b) <= (atol + rtol * absolute(b)) will return True
     # rtol: relative tolerance; atol: absolute tolerance 
     return np.allclose(current_position, desired_position, rtol=0, atol=0.01)
-
-
-def execute_traj(i, traj, open_gripper = True):
-    '''
-    execute a plan (trajectory) from MoveIt
-    wait until the previous desired position has been reached
-    Traj: list, each element is another list which contains joint angles    
-    '''
-    done = False
-    traj_index = 0
-    if open_gripper:
-        g1_joint_value = 1
-        g2_joint_value = 1
-    else:
-        g1_joint_value = 0
-        g2_joint_value = 0
-
-    while not done:
-        pos_targets = np.array(traj[traj_index]+[g1_joint_value, g2_joint_value], dtype=np.float32) 
-        gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)  
-        
-        if check_reach_desired_position(i, pos_targets):
-            traj_index += 1    
-        
-        if traj_index == len(traj):
-            done = True    
-    
+  
 
 
 rospy.init_node('isaac_grasp_client')
 start_time = 1
 frame_count = 0
 get_traj_from_moveit = True
+# print(dof_props['upper'])
 while not gym.query_viewer_has_closed(viewer):
 
     # step the physics
@@ -305,21 +312,26 @@ while not gym.query_viewer_has_closed(viewer):
     t = gym.get_sim_time(sim)
     
     for i in range(num_envs):  
-        # 1. Test check reach desired position
-        # pos_targets = np.array([-0.3356692769522132, get_traj_from_moveitposition(i, pos_targets)
-        # print(reach_desired_position)  
-
-        # 2. Test reach a desired position:
-        # if (t >= start_time):
-            
-        #     pos_targets = np.array([-0.3356692769522132, -0.18960693104623297, 0.9355599880218506, 0.045651170304702046,\
-        #                              0.020980324428042426, 1.7311636090617426, -0.5123334395848442, -0.4493461734062968,\
-        #                              1,1], dtype=np.float32)            
-        #     gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)
-
-        # 3. Test execute trajectory from MoveIt (given joint angles)      
+        
+        # 4. Test execute trajectory from MoveIt ((given Cartesian pose) 
         # if get_traj_from_moveit:
-        #     plan_traj = arm_moveit_planner_client(go_home=True, place_goal_pose=None)
+        #     cartesian_pose = Pose()
+        #     cartesian_pose.orientation.x = 0
+        #     cartesian_pose.orientation.y = 0
+        #     cartesian_pose.orientation.z = 0
+        #     cartesian_pose.orientation.w = 1
+        #     cartesian_pose.position.x = 0.07
+        #     cartesian_pose.position.y = 0.3
+        #     cartesian_pose.position.z = -0.3
+     
+        #     # cartesian_pose.orientation.x = 0.30794364345911074
+        #     # cartesian_pose.orientation.y = 0.6158872869182215
+        #     # cartesian_pose.orientation.z = 0
+        #     # cartesian_pose.orientation.w = 0.7251576120166157
+        #     # cartesian_pose.position.x = 0.0
+        #     # cartesian_pose.position.y = 0.3
+        #     # cartesian_pose.position.z = -0.3
+        #     plan_traj = arm_moveit_planner_client(go_home=False, place_goal_pose=None, cartesian_pose=cartesian_pose)
         #     get_traj_from_moveit = False
         #     traj_index = 0
         #     done = False
@@ -332,35 +344,21 @@ while not gym.query_viewer_has_closed(viewer):
         #     if check_reach_desired_position(i, pos_targets):
         #         traj_index += 1                
         #     if traj_index == len(plan_traj):
-        #         done = True   
+        #         done = True  
 
 
-
-        # 4. Test execute trajectory from MoveIt ((given Cartesian pose) , also test add scene
+        # Test move to preshape:
         if get_traj_from_moveit:
-         
-            
-            cartesian_pose = Pose()
-            cartesian_pose.orientation.x = 0
-            cartesian_pose.orientation.y = 0.707107
-            cartesian_pose.orientation.z = 0.707107
-            cartesian_pose.orientation.w = 0
-            cartesian_pose.position.x = 0.15
-            cartesian_pose.position.y = 0.3
-            cartesian_pose.position.z = -0.3
-     
-            # cartesian_pose.orientation.x = 0.30794364345911074
-            # cartesian_pose.orientation.y = 0.6158872869182215
-            # cartesian_pose.orientation.z = 0
-            # cartesian_pose.orientation.w = 0.7251576120166157
-            # cartesian_pose.position.x = 0.0
-            # cartesian_pose.position.y = 0.3
-            # cartesian_pose.position.z = -0.3
+            preshape_response = gen_grasp_preshape_client()
+            cartesian_pose = preshape_response.palm_goal_pose_world[1].pose
+            cartesian_pose.position.z -= 0.9
+            cartesian_pose.position.y += 0.3
+            rospy.loginfo('Moving to this goal' + str(cartesian_pose))
             plan_traj = arm_moveit_planner_client(go_home=False, place_goal_pose=None, cartesian_pose=cartesian_pose)
             get_traj_from_moveit = False
             traj_index = 0
             done = False
-            print(plan_traj)
+            # print(plan_traj)
         plan_traj_with_gripper = [plan+[1,1] for plan in plan_traj]
         
         if not done:
@@ -369,7 +367,7 @@ while not gym.query_viewer_has_closed(viewer):
             if check_reach_desired_position(i, pos_targets):
                 traj_index += 1                
             if traj_index == len(plan_traj):
-                done = True  
+                done = True          
 
         # step rendering
     gym.step_graphics(sim)

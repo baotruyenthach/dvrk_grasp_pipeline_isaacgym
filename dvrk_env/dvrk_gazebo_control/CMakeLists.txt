@@ -49,16 +49,17 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES
+  GraspObject.msg
+)
 
 # Generate services in the 'srv' folder
 add_service_files(
   FILES
   PalmGoalPoseWorld.srv
+  GraspPreshape.srv
+  StraightLinePlan.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -74,6 +75,7 @@ generate_messages(
   std_msgs
   geometry_msgs
   trajectory_msgs
+  sensor_msgs
 )
 
 ################################################
@@ -107,6 +109,7 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
+  CATKIN_DEPENDS message_runtime
 #  LIBRARIES dvrk_gazebo_control
 #  CATKIN_DEPENDS roscpp rospy std_msgs
 #  DEPENDS system_lib

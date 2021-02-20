@@ -2,4 +2,7 @@
 <launch>
     <include file="$(find isaac_dvrk_moveit_config)/launch/isaac_davinci_moveit.launch" />
     <node name="moveit_planner_server_node" pkg="dvrk_gazebo_control" type="arm_moveit_planner_server.py" respawn="false" output = "screen" />
+    <!-- <node name="gen_grasp_preshape_server_node" pkg="dvrk_gazebo_control" type="gen_grasp_preshape_server.py" respawn="false" output = "screen" />
+     <node name="task_velocity_control_server_node" pkg="dvrk_gazebo_control" type="task_velocity_control_server.py" respawn="false" output = "screen" /> -->
+    <node name="manage_moveit_scene_services_node" pkg="dvrk_gazebo_control" type="manage_moveit_scene_server.py" respawn="false" />
 </launch>

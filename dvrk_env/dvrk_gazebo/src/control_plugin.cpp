@@ -144,14 +144,37 @@ void ControlPlugin::PublishStates()
       }
     }
 
+    if ((joint_name.find("pitch_front_bottom_joint") != std::string::npos) || (joint_name.find("pitch_top_end_joint") != std::string::npos ))
+    {
+      continue;
+    }
+
+
+
+    joint_name.erase(0,10);
+    joint_name = "psm_" + joint_name;
     msg.header.stamp=ros::Time::now();
     msg.name.push_back(joint_name);
 //    msg.position.push_back(joint->GetAngle(0).Radian());
-    msg.position.push_back(joint->Position(0));
+  
+    if ((joint_name.find("yaw_joint") != std::string::npos) && (joint_name.find("tool") == std::string::npos ))
+    {
+      msg.position.push_back(joint->Position(0)*-1.0);
+    } 
+    else
+    {
+      msg.position.push_back(joint->Position(0));
+    }
+
     msg.velocity.push_back(joint->GetVelocity(0));
     msg.effort.push_back(joint->GetForce(0));
 
   }
+  msg.header.stamp=ros::Time::now();
+  msg.name.push_back("psm_rev_joint");
+  msg.position.push_back(0);
+  msg.velocity.push_back(0);
+  msg.effort.push_back(0); 
   pub_states.publish(msg);
 }
 
