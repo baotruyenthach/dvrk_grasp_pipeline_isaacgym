@@ -4,5 +4,6 @@
         "/home/baothach/dvrk_grasp_pipeline_issac/devel/lib/python2.7/dist-packages",
         "/home/baothach/dvrk_WPI/devel/lib/python2.7/dist-packages",
         "/opt/ros/melodic/lib/python2.7/dist-packages"
-    ]
+    ],
+    "python.pythonPath": "/usr/bin/python3"
 }

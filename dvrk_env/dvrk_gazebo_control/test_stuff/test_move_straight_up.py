@@ -309,7 +309,7 @@ while not gym.query_viewer_has_closed(viewer):
     t = gym.get_sim_time(sim)
     
     for i in range(num_envs):  
-
+            
     
 
 
@@ -336,52 +336,52 @@ while not gym.query_viewer_has_closed(viewer):
         #     if traj_index == len(plan_traj):
         #         done = True  
 
-        # 6. Test move straight up
+        # # 6. Test move straight up
 
-        if state == "1":
-            if get_traj_from_moveit:
-                cartesian_pose = Pose()
-                cartesian_pose.orientation.x = 0
-                cartesian_pose.orientation.y = 0.707107
-                cartesian_pose.orientation.z = 0.707107
-                cartesian_pose.orientation.w = 0.0
-                cartesian_pose.position.x = 0.07
-                cartesian_pose.position.y = 0.4
-                cartesian_pose.position.z = -0.1
+        # if state == "1":
+        #     if get_traj_from_moveit:
+        #         cartesian_pose = Pose()
+        #         cartesian_pose.orientation.x = 0
+        #         cartesian_pose.orientation.y = 0.707107
+        #         cartesian_pose.orientation.z = 0.707107
+        #         cartesian_pose.orientation.w = 0.0
+        #         cartesian_pose.position.x = 0.07
+        #         cartesian_pose.position.y = 0.4
+        #         cartesian_pose.position.z = -0.1
         
-                plan_traj = arm_moveit_planner_client(go_home=False, place_goal_pose=None, cartesian_pose=cartesian_pose,current_position=get_current_joint_states(i))
-                get_traj_from_moveit = False
-                traj_index = 0
-                done = False
-                # print(plan_traj)
-            plan_traj_with_gripper = [plan+[0,0] for plan in plan_traj]
+        #         plan_traj = arm_moveit_planner_client(go_home=False, place_goal_pose=None, cartesian_pose=cartesian_pose,current_position=get_current_joint_states(i))
+        #         get_traj_from_moveit = False
+        #         traj_index = 0
+        #         done = False
+        #         # print(plan_traj)
+        #     plan_traj_with_gripper = [plan+[0,0] for plan in plan_traj]
             
-            if not done:
-                pos_targets = np.array(plan_traj_with_gripper[traj_index], dtype=np.float32)
-                gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)        
-                if check_reach_desired_position(i, pos_targets):
-                    traj_index += 1                
-                if traj_index == len(plan_traj):
-                    done = True                      
-                    state = "2"
-                    get_traj_from_moveit = True
+        #     if not done:
+        #         pos_targets = np.array(plan_traj_with_gripper[traj_index], dtype=np.float32)
+        #         gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)        
+        #         if check_reach_desired_position(i, pos_targets):
+        #             traj_index += 1                
+        #         if traj_index == len(plan_traj):
+        #             done = True                      
+        #             state = "2"
+        #             get_traj_from_moveit = True
 
-        if state == "2":
-            if get_traj_from_moveit:
-                task_vel_lift_success, plan_traj = lift_task_vel_planner_client(height_to_lift=0.4, current_position=get_current_joint_states(i))
-                get_traj_from_moveit = False
-                traj_index = 0
-                done = False
-                print(plan_traj)
-                plan_traj_with_gripper = [plan+[0,0] for plan in plan_traj]
+        # if state == "2":
+        #     if get_traj_from_moveit:
+        #         task_vel_lift_success, plan_traj = lift_task_vel_planner_client(height_to_lift=0.4, current_position=get_current_joint_states(i))
+        #         get_traj_from_moveit = False
+        #         traj_index = 0
+        #         done = False
+        #         print(plan_traj)
+        #         plan_traj_with_gripper = [plan+[0,0] for plan in plan_traj]
             
-            if (not done):
-                pos_targets = np.array(plan_traj_with_gripper[traj_index], dtype=np.float32)
-                gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)        
-                if check_reach_desired_position(i, pos_targets):
-                    traj_index += 1                
-                if traj_index == len(plan_traj):
-                    done = True  
+        #     if (not done):
+        #         pos_targets = np.array(plan_traj_with_gripper[traj_index], dtype=np.float32)
+        #         gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)        
+        #         if check_reach_desired_position(i, pos_targets):
+        #             traj_index += 1                
+        #         if traj_index == len(plan_traj):
+        #             done = True  
     # rospy.loginfo("state: " + str(state))
         # step rendering
     gym.step_graphics(sim)

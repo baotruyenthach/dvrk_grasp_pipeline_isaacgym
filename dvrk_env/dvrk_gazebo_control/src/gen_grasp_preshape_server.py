@@ -102,11 +102,11 @@ class GenGraspPreshape():
         # Due to gravity, the hand will be lower than the goal pose for top grasps in simulation. 
         # the top grasp need a further distance from the object.
         self.hand_type = rospy.get_param('~end_effector', 'allegro')
-        self.hand_sample_dist_top = rospy.get_param('~hand_sample_dist_top', 0.06)
+        self.hand_sample_dist_top = rospy.get_param('~hand_sample_dist_top', 0.01)
         self.hand_sample_dist_side = rospy.get_param('~hand_sample_dist_side', 0.03)
         # NOTE: Set to 0.0 to turn off sampling
-        self.hand_dist_var = rospy.get_param('~hand_sample_dist_var', 0.001)
-        self.palm_position_var = rospy.get_param('~palm_position_sample_var', 0.001)
+        self.hand_dist_var = rospy.get_param('~hand_sample_dist_var', 0)
+        self.palm_position_var = rospy.get_param('~palm_position_sample_var', 0)
         self.palm_ort_var = rospy.get_param('~palm_ort_sample_var', 0)
         self.roll_angle_sample_var = rospy.get_param('~/hand_roll_angle_sample_var', 0.001)
         # self.setup_joint_angle_limits()
@@ -289,6 +289,7 @@ class GenGraspPreshape():
                 obj_normal = -obj_normal
         else:
             closest_pt = object_point
+            rospy.loginfo('Found closest point ' + str(closest_pt))
             obj_normal = closest_pt - np.array([obj.pose.position.x, obj.pose.position.y, obj.pose.position.z])
             obj_normal /= np.linalg.norm(obj_normal)
             hand_dist = self.hand_sample_dist_top

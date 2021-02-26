@@ -26,7 +26,7 @@ import moveit_commander
 import numpy as np
 from trac_ik_python.trac_ik import IK
 
-# from moveit_msgs.msg import RobotState
+from moveit_msgs.msg import RobotState
 from std_msgs.msg import Header
 from std_msgs.msg import String
 
@@ -48,13 +48,13 @@ class CartesianPoseMoveitPlanner:
         #self.group.set_planning_time(15)
         #self.group.set_num_planning_attempts(1)
 
-        self.zero_joint_states = np.zeros(7) 
+        self.zero_joint_states = np.zeros(8) 
         self.left_home_pose = True
         if self.left_home_pose:
             # self.home_joint_states = np.array([0.0001086467455024831, 0.17398914694786072, -0.00015721925592515618, 
             #                                     -1.0467143058776855, 0.0006054198020137846, 
             #                                     -0.00030679398332722485, 3.3859387258416973e-06])
-            self.home_joint_states = np.array([0.0, 0.0, 0.15, 0.2, 0.0, 0.0, 0.0, 0.0] )
+            self.home_joint_states = np.array([0.0, 0.0, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0] )
                                                                             
         else:
             self.home_joint_states = np.array([-0.3356692769522132, -0.18960693104623297, 0.9355599880218506, 0.045651170304702046,\
@@ -63,62 +63,10 @@ class CartesianPoseMoveitPlanner:
         self.seed_state = [0.0] * self.ik_solver.number_of_joints
 
         
-    def go_home(self):
+    def go_home(self, current_joint_states):
         print 'go home'
-        self.group.clear_pose_targets()
-        self.group.set_joint_value_target(self.home_joint_states)       
-        plan_home = self.group.plan()
-        # self.group.go(wait=False)
-        # self.group.execute(plan_home, wait=True)
 
-        return plan_home
-
-
-
-    def go_home_isaac(self):
-        print 'go home'
-        
-            
-        pub = rospy.Publisher('joint_states', JointState, queue_size=10)
-        # rate = rospy.Rate(10) # 10hz
-        joint_state = JointState()
-        joint_state.header = Header()
-        joint_state.header.stamp = rospy.Time.now()
-        joint_state.name = ['psm_yaw_joint', 'psm_pitch_back_joint', 'psm_pitch_bottom_joint', 'psm_pitch_end_joint',\
-                            'psm_main_insertion_joint', 'psm_tool_roll_joint', 'psm_tool_pitch_joint', 'psm_tool_yaw_joint','psm_tool_gripper1_joint',\
-                            'psm_tool_gripper2_joint']
-        joint_state.position = [0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        joint_state.velocity = [0]
-        joint_state.effort = [0]
-
-        while not rospy.is_shutdown():
-            # hello_str = "hello world %s" % rospy.get_time()
-            # rospy.loginfo(joint_state)
-            pub.publish(joint_state)
-            # rate.sleep()
-
-            
-
-            self.group.clear_pose_targets()
-            self.group.set_joint_value_target(self.home_joint_states)       
-            plan_home = self.group.plan()
-            # if plan_home.joint_trajectory.points[0].positions[0] == joint_state.position[1]:
-            if np.array_equal(list(planner.robot.get_current_state().joint_state.position), joint_state.position):
-                # print("*******",plan_home.joint_trajectory.points[0].positions, joint_state.position[1] )
-                return plan_home
-            # print("------------",planner.robot.get_current_state().joint_state.position)
-            
-
-
-        # return plan_home
-
-
-    def go_joint_goal(self, current_joint_states, joint_goal):
-        print 'go to joint goal'
-        
-            
-        pub = rospy.Publisher('joint_states', JointState, queue_size=10)
-        # rate = rospy.Rate(10) # 10hzself.
+        # Set start state       
         joint_state = JointState()
         joint_state.header = Header()
         joint_state.header.stamp = rospy.Time.now()
@@ -128,22 +76,42 @@ class CartesianPoseMoveitPlanner:
         joint_state.position = current_joint_states
         joint_state.velocity = [0]
         joint_state.effort = [0]
+        
+        moveit_robot_state = RobotState()
+        moveit_robot_state.joint_state = joint_state
+        self.group.set_start_state(moveit_robot_state)  
 
-        while not rospy.is_shutdown():
-            # hello_str = "hello world %s" % rospy.get_time()
-            # rospy.loginfo(joint_state)
-            pub.publish(joint_state)
-            # rate.sleep()
+        # Get plan
+        self.group.clear_pose_targets()
+        self.group.set_joint_value_target(self.home_joint_states)       
+        plan_home = self.group.plan()
 
-            
 
-            self.group.clear_pose_targets()
-            self.group.set_joint_value_target(joint_goal)       
-            plan_joint_goal = self.group.plan()
-            # if plan_home.joint_trajectory.points[0].positions[0] == joint_state.position[1]:
-            if np.array_equal(list(planner.robot.get_current_state().joint_state.position), joint_state.position):
-                # print("*******",plan_home.joint_trajectory.points[0].positions, joint_state.position[1] )
-                return plan_joint_goal
+        return plan_home
+
+    def go_joint_goal(self, current_joint_states, joint_goal):
+        print 'go to joint goal'
+                    
+        # Set start state       
+        joint_state = JointState()
+        joint_state.header = Header()
+        joint_state.header.stamp = rospy.Time.now()
+        joint_state.name = ['psm_yaw_joint', 'psm_pitch_back_joint', 'psm_pitch_bottom_joint', 'psm_pitch_end_joint',\
+                            'psm_main_insertion_joint', 'psm_tool_roll_joint', 'psm_tool_pitch_joint', 'psm_tool_yaw_joint','psm_tool_gripper1_joint',\
+                            'psm_tool_gripper2_joint']
+        joint_state.position = current_joint_states
+        joint_state.velocity = [0]
+        joint_state.effort = [0]
+        
+        moveit_robot_state = RobotState()
+        moveit_robot_state.joint_state = joint_state
+        self.group.set_start_state(moveit_robot_state)  
+           
+        # Get plan
+        self.group.clear_pose_targets()
+        self.group.set_joint_value_target(joint_goal)       
+        plan_joint_goal = self.group.plan()
+        return plan_joint_goal
 
     def go_zero(self):
         print 'go zero'
@@ -159,74 +127,53 @@ class CartesianPoseMoveitPlanner:
         plan_goal = self.group.plan()
         return plan_goal
 
-    def go_goal_trac_ik(self, pose):
+    def go_goal_trac_ik(self, pose, current_joint_states):
         print 'go goal'
-        # box_pose = PoseStamped()
-        # box_pose.header.frame_id = 'world'
-        # box_pose.pose.orientation.x = 0.0
-        # box_pose.pose.orientation.y = 0.0
-        # box_pose.pose.orientation.z = 0.0
-        # box_pose.pose.orientation.w = 1.0
-        # box_pose.pose.position.x = 0.0 
-        # box_pose.pose.position.y = 0.3
-        # box_pose.pose.position.z = 0.5*0.1 - 0.35
-        # box_name = "box"
-        # self.scene.add_box(box_name, box_pose, size=(50, 50, 50))
-        # rospy.sleep(0.5)
         self.group.clear_pose_targets()
+        
+        # Get IK solution
         ik_js = self.ik_solver.get_ik(self.seed_state, pose.position.x, pose.position.y, pose.position.z,
                                         pose.orientation.x, pose.orientation.y, pose.orientation.z, 
                                         pose.orientation.w)
         if ik_js is None:
             rospy.logerr('No IK solution for motion planning!')
             return None
-        # self.group.set_joint_value_target(np.array(ik_js))
-        # plan_goal = self.group.plan()
 
-        #-----------------------#
-        pub = rospy.Publisher('joint_states', JointState, queue_size=10)
-        # rate = rospy.Rate(10) # 10hz
+        # Set start state       
         joint_state = JointState()
         joint_state.header = Header()
         joint_state.header.stamp = rospy.Time.now()
         joint_state.name = ['psm_yaw_joint', 'psm_pitch_back_joint', 'psm_pitch_bottom_joint', 'psm_pitch_end_joint',\
                             'psm_main_insertion_joint', 'psm_tool_roll_joint', 'psm_tool_pitch_joint', 'psm_tool_yaw_joint','psm_tool_gripper1_joint',\
                             'psm_tool_gripper2_joint']
-        joint_state.position = [0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0]
+        joint_state.position = current_joint_states
         joint_state.velocity = [0]
         joint_state.effort = [0]
-       
-        print("is_known: ", self.scene.get_known_object_names())
+        
+        moveit_robot_state = RobotState()
+        moveit_robot_state.joint_state = joint_state
+        self.group.set_start_state(moveit_robot_state)       
+        # print("is_known: ", self.scene.get_known_object_names()) # Check if collision objects found
 
-        while not rospy.is_shutdown():
-            # hello_str = "hello world %s" % rospy.get_time()
-            # rospy.loginfo(joint_state)
-            pub.publish(joint_state)
-            # rate.sleep()
 
-            
+        # Get plan
+        self.group.set_joint_value_target(np.array(ik_js))         
+        plan_goal = self.group.plan()
+        return plan_goal
 
-            self.group.clear_pose_targets()
-            self.group.set_joint_value_target(np.array(ik_js))     
-            
 
-            if np.array_equal(list(planner.robot.get_current_state().joint_state.position), joint_state.position):
-                plan_goal = self.group.plan()
-                return plan_goal
-
-        # return plan_goal
 
     def handle_pose_goal_planner(self, req):
         plan = None
         if req.go_home:
-            plan = self.go_home_isaac()
+            plan = self.go_home_isaac(req.current_joint_states)
         elif req.go_zero:
             plan = self.go_zero()
         elif req.go_to_joint_goal:
             plan = self.go_joint_goal(req.current_joint_states, req.joint_goal)
         else:
             # plan = self.go_goal(req.palm_goal_pose_world)
-            plan = self.go_goal_trac_ik(req.palm_goal_pose_world)
+            plan = self.go_goal_trac_ik(req.palm_goal_pose_world,req.current_joint_states)
         #print plan
         response = PalmGoalPoseWorldResponse()
         response.success = False
