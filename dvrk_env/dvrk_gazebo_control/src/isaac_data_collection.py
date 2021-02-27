@@ -15,8 +15,9 @@ import open3d
 from utils import open3d_ros_helper as orh
 from utils import o3dpc_to_GraspObject_msg as o3dpc_GO
 import pptk
+from utils.isaac_utils import isaac_format_pose_to_PoseStamped as to_PoseStamped
 
-ROBOT_Z_OFFSET = 0.35
+ROBOT_Z_OFFSET = 0.5
 
 def arm_moveit_planner_client(go_home=False, place_goal_pose=None, cartesian_pose=None):
     #bao123 
@@ -68,6 +69,8 @@ def get_current_joint_states(i):
     current_position = gym.get_actor_dof_states(envs[i], kuka_handles[i], gymapi.STATE_POS)
     current_position = [x[0] for x in current_position]
     return list(current_position)
+
+
 
 if __name__ == "__main__":
 
@@ -263,12 +266,23 @@ if __name__ == "__main__":
     Main stuff is here
     '''
     rospy.init_node('isaac_grasp_client')
-    start_time = 1
-    frame_count = 0
-    get_traj_from_moveit = True
-    state = "home"
-    dc_client = dc_class.GraspDataCollectionClient()
-    while not gym.query_viewer_has_closed(viewer):
+    dc_clients = []
+    grasp_ids = []
+    grasp_plan_failures_nums = []
+    for i in range(num_envs): 
+        grasp_ids.append(0)
+        grasp_plan_failures_nums.append(0)
+        dc_client = dc_class.GraspDataCollectionClient()
+        dc_clients.append(dc_client)
+    
+    all_done = False    
+    grasp_failure_retry_times = dc_clients[0].num_grasps_per_object
+
+    # get_last_object_id_name() and object name *** NEED FIX
+    dc_clients[0].cur_object_id = 0
+    dc_clients[0].object_name = "custom_box"
+    
+    while (not gym.query_viewer_has_closed(viewer)) or all_done:
 
         # step the physics
         gym.simulate(sim)
@@ -276,30 +290,37 @@ if __name__ == "__main__":
     
         
         # # Run sart state machine
-        for idx in range(num_envs):  
+        for i in range(num_envs):  
 
-            if state == "home":
-                rospy.loginfo("**Current state: " + state)
+            if dc_clients[i].state == "home":
+                rospy.loginfo("**Current state: " + dc_clients[i].state)
+                rospy.loginfo('Grasp_id: %s' %str(grasp_ids[i]))
+
                 # Set random pose for the object
-                object_pose_stamped = dc_client.gen_object_pose()
-                state = gym.get_actor_rigid_body_states(env, object_handles[i], gymapi.STATE_NONE)    
+                object_pose_stamped = dc_clients[i].gen_object_pose()
+                state = gym.get_actor_rigid_body_states(envs[i], object_handles[i], gymapi.STATE_NONE)    
                 state['pose']['p'].fill((object_pose_stamped.pose.position.x,object_pose_stamped.pose.position.y,object_pose_stamped.pose.position.z))
                 state['pose']['r'].fill((object_pose_stamped.pose.orientation.x,object_pose_stamped.pose.orientation.y,\
                                          object_pose_stamped.pose.orientation.z,object_pose_stamped.pose.orientation.w))
-                gym.set_actor_rigid_body_states(env, object_handles[i], state, gymapi.STATE_ALL) 
+                gym.set_actor_rigid_body_states(envs[i], object_handles[i], state, gymapi.STATE_ALL) 
 
                 # Robot go home!
                 pos_targets = np.array([0.,0.,0.,0.,0.,0.,0.,0.,0.,0.], dtype=np.float32)
                 gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets) 
                 if check_reach_desired_position(i, pos_targets):
-                    state = "get point cloud"
-                    frame_count = 0
+                    dc_clients[i].state = "set up parameters"
+                    dc_clients[i].frame_count = 0
                 # print(gym.get_rigid_body_segmentation_id(env,object_handles[i], 0) )
 
-            if state == "get point cloud":
-                frame_count += 1
-                if frame_count == 2:
-                    rospy.loginfo("**Current state: " + state)
+            if dc_clients[i].state == "set up parameters":
+                # dc_client.set_up_object_name(object_name=object_name, object_mesh_path=None) # Need fix object_mesh_path
+                dc_clients[i].set_up_grasp_id(grasp_ids[i])
+                dc_clients[i].state = "get point cloud"
+
+            if dc_clients[i].state == "get point cloud":
+                dc_clients[i].frame_count += 1
+                if dc_clients[i].frame_count == 2:
+                    rospy.loginfo("**Current state: " + dc_clients[i].state)
                     # Array of RGB Colors, one per camera, for dots in the resulting
                     # point cloud. Points will have a color which indicates which camera's
                     # depth image created the point.
@@ -315,16 +336,16 @@ if __name__ == "__main__":
                     for c in range(len(cam_handles)):
                         print("Deprojecting from camera %d" % c)
                         # Retrieve depth and segmentation buffer
-                        depth_buffer = gym.get_camera_image(sim, env, cam_handles[c], gymapi.IMAGE_DEPTH)
-                        seg_buffer = gym.get_camera_image(sim, env, cam_handles[c], gymapi.IMAGE_SEGMENTATION)
+                        depth_buffer = gym.get_camera_image(sim, envs[i], cam_handles[c], gymapi.IMAGE_DEPTH)
+                        seg_buffer = gym.get_camera_image(sim, envs[i], cam_handles[c], gymapi.IMAGE_SEGMENTATION)
 
                         # Get the camera view matrix and invert it to transform points from camera to world
                         # space
-                        vinv = np.linalg.inv(np.matrix(gym.get_camera_view_matrix(sim, env, cam_handles[c])))
+                        vinv = np.linalg.inv(np.matrix(gym.get_camera_view_matrix(sim, envs[i], cam_handles[c])))
 
                         # Get the camera projection matrix and get the necessary scaling
                         # coefficients for deprojection
-                        proj = gym.get_camera_proj_matrix(sim, env, cam_handles[c])
+                        proj = gym.get_camera_proj_matrix(sim, envs[i], cam_handles[c])
                         fu = 2/proj[0, 0]
                         fv = 2/proj[1, 1]
 
@@ -345,16 +366,17 @@ if __name__ == "__main__":
                                     p2 = X2*vinv  # Inverse camera view to get world coordinates
                                     points.append([p2[0, 0], p2[0, 1], p2[0, 2]])
                                     color.append(c)
-                    
-                    v = pptk.viewer(points, color)
-                    v.color_map(color_map)
-                    # Sets a similar view to the gym viewer in the PPTK viewer
-                    v.set(lookat=[0, 0, 0], r=5, theta=0.4, phi=0)
+                        dc_clients[i].frame_count = 0
+                    # v = pptk.viewer(points, color)
+                    # v.color_map(color_map)
+                    # # Sets a similar view to the gym viewer in the PPTK viewer
+                    # v.set(lookat=[0, 0, 0], r=5, theta=0.4, phi=0)
 
                     
                     # pcd = open3d.geometry.PointCloud()
                     # pcd.points = open3d.utility.Vector3dVector(np.array(points))
                     # obb = pcd.get_oriented_bounding_box()
+                    # print(obb.R)
 
                     # points = np.asarray(obb.get_box_points())
                     # lines = [
@@ -378,18 +400,18 @@ if __name__ == "__main__":
                     # )
                     # line_set.colors = open3d.utility.Vector3dVector(colors)
                     # open3d.visualization.draw_geometries([pcd, line_set])    
-                    item = [x[0] for x in points]
-                    print(max(item))
-                    print(min(item))
-                    item = [x[1] for x in points]
-                    print(max(item))                
-                    item = [x[2] for x in points]
-                    print(max(item))    
+                    # item = [x[0] for x in points]
+                    # print(max(item))
+                    # print(min(item))
+                    # item = [x[1] for x in points]
+                    # print(max(item))                
+                    # item = [x[2] for x in points]
+                    # print(max(item))    
 
-                    state = "generate preshape"
+                    dc_clients[i].state = "generate preshape"
 
-            if state == "generate preshape":
-                rospy.loginfo("**Current state: " + state)
+            if dc_clients[i].state == "generate preshape":
+                rospy.loginfo("**Current state: " + dc_clients[i].state)
                 pcd = open3d.geometry.PointCloud()
                 pcd.points = open3d.utility.Vector3dVector(np.array(points))
                 
@@ -397,24 +419,29 @@ if __name__ == "__main__":
                 print("bounding box pose: ", pc_ros_msg.pose)
                 print("bounding box height: ", pc_ros_msg.height)
                 print("bounding box width: ", pc_ros_msg.width)
-                print("bounding box depth: ", pc_ros_msg.depth)                
-                preshape_response = dc_client.gen_grasp_preshape_client(pc_ros_msg)
-                
-                for idx in range(len(preshape_response.palm_goal_pose_world)):
-                    if preshape_response.is_top_grasp[i] == True:
-                        cartesian_goal = preshape_response.palm_goal_pose_world[i].pose
-                cartesian_goal.position.z -= ROBOT_Z_OFFSET
-                plan_traj = dc_client.arm_moveit_planner_client(go_home=False, cartesian_goal=cartesian_goal, current_position=get_current_joint_states(i))
-                if (not plan_traj):
-                    rospy.logerr('Can not find moveit plan to grasp. Ignore this grasp.\n')   
-                else:
-                    rospy.loginfo('Sucesfully found a moveit plan to grasp.\n')
-                    state = "move to preshape"
-                    traj_index = 0
-                    rospy.loginfo('Moving to this preshape goal' + str(cartesian_goal))
+                print("bounding box depth: ", pc_ros_msg.depth) 
 
-            if state == "move to preshape":
-                # rospy.loginfo("**Current state: " + state)
+                dc_clients[i].object_world_seg_pose =  pc_ros_msg.pose # Save obb pose (in Pose() ros format)        
+                preshape_response = dc_clients[i].gen_grasp_preshape_client(pc_ros_msg)
+                
+                for idx in range(len(preshape_response.palm_goal_pose_world)):  # Pick only top grasp
+                    if preshape_response.is_top_grasp[idx] == True:
+                        cartesian_goal = preshape_response.palm_goal_pose_world[idx].pose # Need fix
+                        dc_clients[i].top_grasp_preshape_idx = idx
+                cartesian_goal.position.z -= ROBOT_Z_OFFSET
+                
+                plan_traj = dc_clients[i].arm_moveit_planner_client(go_home=False, cartesian_goal=cartesian_goal, current_position=get_current_joint_states(i))
+                if (not plan_traj):
+                    rospy.logerr('Can not find moveit plan to grasp. Ignore this grasp.\n')  
+                    grasp_plan_failures_nums[i] += 1 
+                else:
+                    rospy.loginfo('Sucesfully found a PRESHAPE moveit plan to grasp.\n')
+                    dc_clients[i].state = "move to preshape"
+                    traj_index = 0
+                    rospy.loginfo('Moving to this preshape goal: ' + str(cartesian_goal))
+
+            if dc_clients[i].state == "move to preshape":
+                # rospy.loginfo("**Current state: " + dc_clients[i].state)
                 # print(plan_traj)
                 # rospy.loginfo('Moving to this preshape goal' + str(cartesian_goal))
                 plan_traj_with_gripper = [plan+[1,1] for plan in plan_traj]
@@ -423,48 +450,99 @@ if __name__ == "__main__":
                 if check_reach_desired_position(i, pos_targets):
                     traj_index += 1             
                 if traj_index == len(plan_traj):
-                    state = "grap object"   
-                    rospy.loginfo("Succesfully executed moveit arm plan. Let's fucking grasp it!!")
+                    dc_clients[i].state = "record true_palm_pose_world"   
+                    rospy.loginfo("Succesfully executed PRESHAPE moveit arm plan. Let's fucking grasp it!!")
 
-            # if state == "grap object":
-                
+
             
-            
-            # 4. Test execute trajectory from MoveIt ((given Cartesian pose) , also test add scene
-            # if get_traj_from_moveit:
-            
-                
-            #     cartesian_pose = Pose()
-            #     cartesian_pose.orientation.x = 0
-            #     cartesian_pose.orientation.y = 0.707107
-            #     cartesian_pose.orientation.z = 0.707107
-            #     cartesian_pose.orientation.w = 0
-            #     cartesian_pose.position.x = 0.15
-            #     cartesian_pose.position.y = 0.3
-            #     cartesian_pose.position.z = -0.3
         
-            #     # cartesian_pose.orientation.x = 0.30794364345911074
-            #     # cartesian_pose.orientation.y = 0.6158872869182215
-            #     # cartesian_pose.orientation.z = 0
-            #     # cartesian_pose.orientation.w = 0.7251576120166157
-            #     # cartesian_pose.position.x = 0.0
-            #     # cartesian_pose.position.y = 0.3
-            #     # cartesian_pose.position.z = -0.3
-            #     plan_traj = arm_moveit_planner_client(go_home=False, place_goal_pose=None, cartesian_pose=cartesian_pose)
-            #     get_traj_from_moveit = False
-            #     traj_index = 0
-            #     done = False
-            #     print(plan_traj)
-            # plan_traj_with_gripper = [plan+[1,1] for plan in plan_traj]
+            # # Determine whether everything is done and it's time to exit out:
+            # if dc_clients[i].grasp_id >= dc_clients[i].num_grasps_per_object or grasp_plan_failures_nums[i] >= grasp_failure_retry_times:
+            #     dc_clients[i].state = "done"
             
-            # if not done:
-            #     pos_targets = np.array(plan_traj_with_gripper[traj_index], dtype=np.float32)
-            #     gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)        
-            #     if check_reach_desired_position(i, pos_targets):
-            #         traj_index += 1                
-            #     if traj_index == len(plan_traj):
-            #         done = True  
+            # all_done = all(dc_clients[i].state == 'done' for i in range(num_envs))
+                
+    
+            
+            if dc_clients[i].state == "record true_palm_pose_world":
+                dc_clients[i].frame_count += 1
+                if dc_clients[i].frame_count == 60:   # Wait to get better tool yaw link pose
+                    rospy.loginfo("**Current state: " + dc_clients[i].state)
+                    robot_links_poses = gym.get_actor_rigid_body_states(envs[i], kuka_handles[i], gymapi.STATE_POS)
+                    dc_clients[i].true_palm_pose_world = to_PoseStamped(robot_links_poses[-3]) # save 'tool yaw link' pose in cartesian (before grasp)
+                    dc_clients[i].frame_count = 0
+                    dc_clients[i].state = "grasp object" 
+                    print("true_palm_pose_world: ", dc_clients[i].true_palm_pose_world)
 
+            if dc_clients[i].state == "grasp object":
+                gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka", "psm_tool_gripper1_joint"), 0.5)
+                gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka", "psm_tool_gripper2_joint"), -0.2) 
+                gym.get_actor_dof_states(envs[i], kuka_handles[i], gymapi.STATE_POS)                     
+                dof_states = gym.get_actor_dof_states(envs[i], kuka_handles[i], gymapi.STATE_POS)
+                if np.allclose(dof_states['pos'][8:], [0.5, -0.2], rtol=0, atol=0.05):
+                    dc_clients[i].state = "record close_palm_pose_world"
+                    get_lift_moveit_plan = True
+                        
+
+            if dc_clients[i].state == "record close_palm_pose_world":
+                dc_clients[i].frame_count += 1
+                if dc_clients[i].frame_count == 50:   # Wait to get better tool yaw link pose   
+                    rospy.loginfo("**Current state: " + dc_clients[i].state)
+                    robot_links_poses = gym.get_actor_rigid_body_states(envs[i], kuka_handles[i], gymapi.STATE_POS)
+                    dc_clients[i].close_palm_pose_world = to_PoseStamped(robot_links_poses[-3]) # save 'tool yaw link' pose in cartesian (already grasped and holding the object)                   
+                    dc_clients[i].state = "lift object"
+                    dc_clients[i].frame_count = 0
+                    print("close_palm_pose_world: ", dc_clients[i].close_palm_pose_world)
+
+            if dc_clients[i].state == "lift object":                            
+                if get_lift_moveit_plan:
+                    rospy.loginfo("**Current state: " + dc_clients[i].state)
+                    plan_traj = dc_clients[i].lift_moveit_planner_client(current_position=get_current_joint_states(i))                            
+                    if (not plan_traj):
+                        rospy.logerr('Can not find moveit plan to grasp. Ignore this grasp.\n')  
+                        dc_clients[i].state = "done" 
+                    else:
+                        rospy.loginfo('Sucesfully found a LIFT moveit plan to grasp.\n')
+                        traj_index = 0
+                        get_lift_moveit_plan = False
+                else:
+                    plan_traj_with_gripper = [plan+[0.5, -0.2] for plan in plan_traj]
+                    pos_targets = np.array(plan_traj_with_gripper[traj_index], dtype=np.float32)
+                    gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)        
+                    if check_reach_desired_position(i, pos_targets):
+                        traj_index += 1             
+                    if traj_index == len(plan_traj):
+                        dc_clients[i].state = "record lift_palm_pose_world"   
+                        rospy.loginfo("Succesfully executed LIFT moveit plan. Done!")
+            
+            if dc_clients[i].state == "record lift_palm_pose_world":
+                dc_clients[i].frame_count += 1
+                if dc_clients[i].frame_count == 50:   # Wait to get better tool yaw link pose   
+                    rospy.loginfo("**Current state: " + dc_clients[i].state)
+                    robot_links_poses = gym.get_actor_rigid_body_states(envs[i], kuka_handles[i], gymapi.STATE_POS)
+                    dc_clients[i].lift_palm_pose_world = to_PoseStamped(robot_links_poses[-3]) # save 'tool yaw link' pose in cartesian (already grasped and holding the object)                   
+                    dc_clients[i].state = "record all grasp data"
+                    dc_clients[i].frame_count = 0
+                    print("lift_palm_pose_world: ", dc_clients[i].lift_palm_pose_world)
+
+            if dc_clients[i].state == "record all grasp data":
+                rospy.loginfo("**Current state: " + dc_clients[i].state)
+                object_pose = gym.get_actor_rigid_body_states(envs[i], object_handles[i], gymapi.STATE_POS)
+                dc_clients[i].grasp_label = 1 if object_pose["pose"]["p"]["z"] >= dc_clients[i].grasp_success_object_height else 0
+                dc_clients[i].record_grasp_data_client()    # Need fix grasp_preshape_idx
+                dc_clients[i].state = "done"
+            
+            if dc_clients[i].state == "done":
+                rospy.loginfo("WE'RE DONE !!!")
+                dc_clients[i].state = "extra"
+
+
+
+                
+                
+            # if state == "lift object":   
+            
+       
             # step rendering
         gym.step_graphics(sim)
         gym.draw_viewer(viewer, sim, False)

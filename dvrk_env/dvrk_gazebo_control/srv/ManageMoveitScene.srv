@@ -1,0 +1,7 @@
+bool create_scene
+bool clean_scene
+GraspObject obj_seg
+geometry_msgs/PoseStamped object_pose_world
+string object_mesh_path
+---
+bool success

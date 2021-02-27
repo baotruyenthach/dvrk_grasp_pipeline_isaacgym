@@ -25,6 +25,7 @@ from copy import copy
 import rospy
 from dvrk_gazebo_control.srv import *
 from geometry_msgs.msg import PoseStamped, Pose
+from utils.isaac_utils import isaac_format_pose_to_PoseStamped as to_PoseStamped
 
 
 
@@ -294,6 +295,8 @@ rospy.init_node('isaac_grasp_client')
 start_time = 1
 frame_count = 0
 get_traj_from_moveit = True
+get_state = False
+count = 0
 while not gym.query_viewer_has_closed(viewer):
 
     # step the physics
@@ -305,6 +308,22 @@ while not gym.query_viewer_has_closed(viewer):
     t = gym.get_sim_time(sim)
     
     for i in range(num_envs):  
+        
+        # 0. Test get pose of tool yaw link
+        if get_state == True:
+            
+            if count == 60:
+                state = gym.get_actor_rigid_body_states(env, kuka_handles[i], gymapi.STATE_POS)
+                # for stuff in state["pose"]:
+                #     print(stuff)
+                #     print("-------------------------")
+                print(to_PoseStamped(state[-3]))
+                dof_state = gym.get_actor_dof_states(envs[i], kuka_handles[i], gymapi.STATE_POS)
+                print("dof gripper: ", dof_state['pos'][8:])
+                print(np.allclose(dof_state['pos'][8:], [0.5, 0.5], rtol=0, atol=0.001))
+                print(np.allclose(dof_state['pos'][8:], [0.4, 0.4], rtol=0, atol=0.001))
+                get_state = False
+            count += 1
         # 1. Test check reach desired position
         # pos_targets = np.array([-0.3356692769522132, get_traj_from_moveitposition(i, pos_targets)
         # print(reach_desired_position)  
@@ -360,8 +379,8 @@ while not gym.query_viewer_has_closed(viewer):
             get_traj_from_moveit = False
             traj_index = 0
             done = False
-            print(plan_traj)
-        plan_traj_with_gripper = [plan+[1,1] for plan in plan_traj]
+            # print(plan_traj)
+        plan_traj_with_gripper = [plan+[0.5,0.5] for plan in plan_traj]
         
         if not done:
             pos_targets = np.array(plan_traj_with_gripper[traj_index], dtype=np.float32)
@@ -369,15 +388,22 @@ while not gym.query_viewer_has_closed(viewer):
             if check_reach_desired_position(i, pos_targets):
                 traj_index += 1                
             if traj_index == len(plan_traj):
+                
+                get_state = True
                 done = True  
+        
+
 
         # step rendering
     gym.step_graphics(sim)
     gym.draw_viewer(viewer, sim, False)
     gym.sync_frame_time(sim)
 
-
-
+state = gym.get_actor_rigid_body_states(env, kuka_handles[i], gymapi.STATE_POS)
+for stuff in state["pose"]:
+    print(stuff)
+    print("-------------------------")
+print(to_PoseStamped(state[-3]))
 print("Done")
 
 gym.destroy_viewer(viewer)

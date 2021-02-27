@@ -31,6 +31,9 @@ from std_srvs.srv import Trigger, TriggerRequest
 
 from scipy.spatial.transform import Rotation as R
 
+import isaac_data_collection
+ROBOT_Z_OFFSET = isaac_data_collection.ROBOT_Z_OFFSET
+
 class GraspDataCollectionClient:
     def __init__(self):
         # rospy.init_node('grasp_client')
@@ -38,31 +41,35 @@ class GraspDataCollectionClient:
         self.use_hd = rospy.get_param('~use_hd', True)
         self.num_grasps_per_object = rospy.get_param('~num_grasps_per_object', 80)
         rospy.loginfo("Doing %d grasps per object", self.num_grasps_per_object)
-        self.save_visual_data_pre_path = rospy.get_param('~save_visual_data_pre_path', '/home/mohanraj/reflex_grasp_data/visual/')
+        self.save_visual_data_pre_path = rospy.get_param('~save_visual_data_pre_path', '/home/baothach/dvrk_grasp_data/visual/')
         self.smooth_plan_traj = rospy.get_param('~smooth_plan_traj', True)
         self.mount_desired_world = None
         self.mount_desired_world = None
         self.palm_desired_world = None
         self.object_world_seg_pose = None
         self.object_world_sim_pose = None
-        self.table_len_z = 0.1
+        self.table_len_z = 0.15  # Need fix
         self.min_palm_dist_to_table = rospy.get_param('~min_palm_dist_to_table', 0.)
         self.min_palm_height = self.table_len_z + self.min_palm_dist_to_table
         self.max_palm_dist_to_table = rospy.get_param('~max_palm_dist_to_table', 0.05)
         self.max_palm_height = self.table_len_z + self.max_palm_dist_to_table
-        self.lift_height = 0.15
-        lift_dist_suc_range = 0.15
+        self.lift_height = 0.05
+        lift_dist_suc_range = 0.01
         self.grasp_success_object_height = self.table_len_z + self.lift_height - lift_dist_suc_range
-        self.place_x_min = 0.15
+        self.place_x_min = -0.15
         self.place_x_max = 0.15
-        self.place_y_min = 0.25
-        self.place_y_max = 0.35
+        self.place_y_min = 0.3
+        self.place_y_max = 0.4
+        self.state = "home"
+        self.frame_count = 0
+        self.grasp_label = None
+        self.top_grasp_preshape_idx = None
 
-        self.data_recording_path = rospy.get_param('~data_recording_path', '/home/mohanraj/reflex_grasp_data/')
+        self.data_recording_path = rospy.get_param('~data_recording_path', '/home/baothach/dvrk_grasp_data/')
         self.grasp_file_name = self.data_recording_path + 'grasp_data.h5'
 
-        gazebo_model_state_topic = '/gazebo/model_states'
-        rospy.Subscriber(gazebo_model_state_topic, ModelStates, self.get_object_pose_from_gazebo)
+        # gazebo_model_state_topic = '/gazebo/model_states'
+        # rospy.Subscriber(gazebo_model_state_topic, ModelStates, self.get_object_pose_from_gazebo)
 
         #hand_joint_states_topic = '/allegro_hand_right/joint_states'
 
@@ -520,19 +527,34 @@ class GraspDataCollectionClient:
         rospy.loginfo('Service arm_movement to lift is executed %s.'%str(self.movement_response.success))
 
 
-    def lift_moveit_planner_client(self, height_to_lift=0.15):
+    def lift_moveit_planner_client(self, current_position, height_to_lift=None):
+        if height_to_lift == None:
+            height_to_lift = self.lift_height
         rospy.loginfo('Waiting for service moveit_cartesian_pose_planner to lift.')
         rospy.wait_for_service('moveit_cartesian_pose_planner')
         rospy.loginfo('Calling service moveit_cartesian_pose_planner to lift.')
         try:
             planning_proxy = rospy.ServiceProxy('moveit_cartesian_pose_planner', PalmGoalPoseWorld)
             planning_request = PalmGoalPoseWorldRequest()
-            planning_request.palm_goal_pose_world = copy.deepcopy(self.mount_desired_world.pose)
-            planning_request.palm_goal_pose_world.position.z += height_to_lift
+            planning_request.current_joint_states = current_position
+            planning_request.palm_goal_pose_world = copy.deepcopy(self.close_palm_pose_world.pose)
+            planning_request.palm_goal_pose_world.position.z += height_to_lift -  ROBOT_Z_OFFSET
             self.planning_response = planning_proxy(planning_request) 
         except (rospy.ServiceException, e):
             rospy.loginfo('Service moveit_cartesian_pose_planner call to lift failed: %s'%e)
         rospy.loginfo('Service moveit_cartesian_pose_planner to lift is executed %s.'%str(self.planning_response.success))
+
+        plan_list = []  # Convert ROS Trajectory msg to a list for easy usage
+        if not self.planning_response.success:
+            rospy.loginfo('Does not have a plan to execute!')
+        else:        
+            for point in self.planning_response.plan_traj.points:
+                plan_list.append(list(point.positions))
+        return plan_list #If no plan, plan_list is empty
+
+    
+
+
 
 
     def lift_task_vel_planner_client(self, height_to_lift=0.15):
@@ -596,7 +618,7 @@ class GraspDataCollectionClient:
                        %self.save_visual_data_response.save_visual_data_success)
 
 
-    def record_grasp_data_client(self, grasp_preshape_idx):
+    def record_grasp_data_client(self, grasp_preshape_idx=None):
         '''
         depend on whether the grasp is success or not (self.get_grasp_label()), record the RGBD images into the correct folder
         '''
@@ -604,7 +626,7 @@ class GraspDataCollectionClient:
         rospy.loginfo('Waiting for service record_grasp_data.')
         rospy.wait_for_service('record_grasp_data')
         rospy.loginfo('Calling service record_grasp_data.')
-        self.save_grasp_visual_data()
+        # self.save_grasp_visual_data()
         try:
             record_grasp_data_proxy = rospy.ServiceProxy('record_grasp_data', SimGraspData)
             record_grasp_data_request = SimGraspDataRequest()
@@ -612,35 +634,22 @@ class GraspDataCollectionClient:
             record_grasp_data_request.grasp_id = self.grasp_id
             record_grasp_data_request.time_stamp = time.time()
 
-            grasp_label = self.get_grasp_label()
-            record_grasp_data_request.grasp_success_label = grasp_label 
-
-            # Record the grasp image from gazebo
-            if self.save_grasp_snap and self.gazebo_rgb_image_msg is not None:
-                self.gazebo_rgb_image = self.bridge.imgmsg_to_cv2(self.gazebo_rgb_image_msg, "bgr8")
-                if grasp_label:
-                    path_to_save_gazebo_rgb = self.save_visual_data_pre_path + \
-                        'gazebo_rgb_image/suc_grasps/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
-                        '_grasp_' + str(self.grasp_id) + '.png' 
-                else:
-                    path_to_save_gazebo_rgb = self.save_visual_data_pre_path + \
-                        'gazebo_rgb_image/fail_grasps/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
-                        '_grasp_' + str(self.grasp_id) + '.png' 
-
-                cv2.imwrite(path_to_save_gazebo_rgb, self.gazebo_rgb_image)
+            
+            record_grasp_data_request.grasp_success_label = self.grasp_label 
 
 
             record_grasp_data_request.object_world_seg_pose = self.object_world_seg_pose
             record_grasp_data_request.object_world_sim_pose = self.object_world_sim_pose 
-            record_grasp_data_request.preshape_palm_world_pose = self.preshape_response.palm_goal_pose_world[grasp_preshape_idx]
-            record_grasp_data_request.preshape_allegro_joint_state = self.preshape_response.allegro_joint_state[grasp_preshape_idx] 
-            record_grasp_data_request.true_preshape_joint_state = self.true_preshape_hand_js
+            record_grasp_data_request.preshape_palm_world_pose = self.preshape_response.palm_goal_pose_world[self.top_grasp_preshape_idx]
+            # record_grasp_data_request.preshape_allegro_joint_state = self.preshape_response.allegro_joint_state[grasp_preshape_idx] 
+            # record_grasp_data_request.true_preshape_joint_state = self.true_preshape_hand_js
             record_grasp_data_request.true_preshape_palm_world_pose = self.true_palm_pose_world
-            record_grasp_data_request.close_shape_allegro_joint_state = self.close_hand_js  
+            # record_grasp_data_request.close_shape_allegro_joint_state = self.close_hand_js  
             record_grasp_data_request.close_shape_palm_world_pose = self.close_palm_pose_world 
-            record_grasp_data_request.lift_shape_allegro_joint_state = self.lift_hand_js  
+            # record_grasp_data_request.lift_shape_allegro_joint_state = self.lift_hand_js  
             record_grasp_data_request.lift_shape_palm_world_pose = self.lift_palm_pose_world 
-            record_grasp_data_request.top_grasp = self.preshape_response.is_top_grasp[grasp_preshape_idx] 
+            # record_grasp_data_request.top_grasp = self.preshape_response.is_top_grasp[grasp_preshape_idx] 
+            record_grasp_data_request.top_grasp = True
 
             self.record_grasp_data_response = record_grasp_data_proxy(record_grasp_data_request) 
             rospy.loginfo('****' + str(self.record_grasp_data_response))
@@ -649,7 +658,7 @@ class GraspDataCollectionClient:
         rospy.loginfo('Service record_grasp_data is executed %s.'%self.record_grasp_data_response.save_h5_success)
 
         self.record_grasp_data_request = record_grasp_data_request
-        self.save_lift_visual_data()
+        # self.save_lift_visual_data()
 
 
     def save_grasp_visual_data(self):
@@ -832,8 +841,9 @@ class GraspDataCollectionClient:
         self.object_world_sim_pose = None
         place_x_loc = np.random.uniform(self.place_x_min, self.place_x_max) 
         place_y_loc = np.random.uniform(self.place_y_min, self.place_y_max) 
-        z_orientation = np.random.uniform(0., 2 * np.pi)
+        z_orientation = np.random.uniform(0., 0 * np.pi)
         object_pose = [0., 0., z_orientation, place_x_loc, place_y_loc, self.table_len_z]
+        rospy.loginfo('z orientation: ' + str(z_orientation*180/np.pi))
         rospy.loginfo('Generated random object pose:')
         rospy.loginfo(object_pose)
         object_pose_stamped = self.get_pose_stamped_from_array(object_pose) 

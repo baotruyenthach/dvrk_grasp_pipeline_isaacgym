@@ -60,6 +60,8 @@ add_service_files(
   PalmGoalPoseWorld.srv
   GraspPreshape.srv
   StraightLinePlan.srv
+  SimGraspData.srv
+  ManageMoveitScene.srv
 )
 
 ## Generate actions in the 'action' folder

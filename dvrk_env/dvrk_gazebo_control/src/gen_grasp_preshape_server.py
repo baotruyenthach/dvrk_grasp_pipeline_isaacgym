@@ -102,7 +102,7 @@ class GenGraspPreshape():
         # Due to gravity, the hand will be lower than the goal pose for top grasps in simulation. 
         # the top grasp need a further distance from the object.
         self.hand_type = rospy.get_param('~end_effector', 'allegro')
-        self.hand_sample_dist_top = rospy.get_param('~hand_sample_dist_top', 0.01)
+        self.hand_sample_dist_top = rospy.get_param('~hand_sample_dist_top', 0.03)
         self.hand_sample_dist_side = rospy.get_param('~hand_sample_dist_side', 0.03)
         # NOTE: Set to 0.0 to turn off sampling
         self.hand_dist_var = rospy.get_param('~hand_sample_dist_var', 0)
