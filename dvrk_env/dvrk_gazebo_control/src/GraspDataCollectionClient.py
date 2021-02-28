@@ -39,7 +39,7 @@ class GraspDataCollectionClient:
         # rospy.init_node('grasp_client')
         self.use_sim = rospy.get_param('~use_sim', True)
         self.use_hd = rospy.get_param('~use_hd', True)
-        self.num_grasps_per_object = rospy.get_param('~num_grasps_per_object', 80)
+        self.num_grasps_per_object = rospy.get_param('~num_grasps_per_object', 2)
         rospy.loginfo("Doing %d grasps per object", self.num_grasps_per_object)
         self.save_visual_data_pre_path = rospy.get_param('~save_visual_data_pre_path', '/home/baothach/dvrk_grasp_data/visual/')
         self.smooth_plan_traj = rospy.get_param('~smooth_plan_traj', True)
@@ -64,6 +64,11 @@ class GraspDataCollectionClient:
         self.frame_count = 0
         self.grasp_label = None
         self.top_grasp_preshape_idx = None
+        self.point_cloud = None # point cloud
+        self.get_lift_moveit_plan = None
+        self.grasp_id = 0
+        self.grasp_plan_failures_num = 0
+        self.max_grasp_plan_failures_num = 80
 
         self.data_recording_path = rospy.get_param('~data_recording_path', '/home/baothach/dvrk_grasp_data/')
         self.grasp_file_name = self.data_recording_path + 'grasp_data.h5'
@@ -661,49 +666,38 @@ class GraspDataCollectionClient:
         # self.save_lift_visual_data()
 
 
-    def save_grasp_visual_data(self):
-        if self.grasp_visual_data_response is not None:
-            save_grasp_visual_data_request = SaveVisualDataRequest()
-            save_grasp_visual_data_request.real_kinect2 = not self.use_sim
-            save_grasp_visual_data_request.scene_cloud = self.grasp_visual_data_response.scene_cloud 
-            save_grasp_visual_data_request.scene_depth_img = self.grasp_visual_data_response.scene_depth_img
-            save_grasp_visual_data_request.scene_rgb_img = self.grasp_visual_data_response.scene_rgb_img
-
-            save_grasp_visual_data_request.scene_cloud_save_path = self.save_visual_data_pre_path + \
-               'pcd/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
-               '_grasp_' + str(self.grasp_id) + '.pcd' 
-            save_grasp_visual_data_request.rgb_image_save_path = self.save_visual_data_pre_path + \
-               'rgb_image/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
-               '_grasp_' + str(self.grasp_id) + '.png' 
-            save_grasp_visual_data_request.depth_image_save_path = self.save_visual_data_pre_path + \
-               'depth_image/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
-               '_grasp_' + str(self.grasp_id) + '.png' 
-
-            self.record_grasp_visual_data_client(save_grasp_visual_data_request)
-            self.grasp_visual_data_response = None
-
-
-    def save_lift_visual_data(self):
-        if self.lift_visual_data_response is not None:
-            save_visual_data_request = SaveVisualDataRequest()
-            save_visual_data_request.real_kinect2 = not self.use_sim
-            save_visual_data_request.scene_cloud = self.lift_visual_data_response.scene_cloud 
-            save_visual_data_request.scene_depth_img = self.lift_visual_data_response.scene_depth_img
-            save_visual_data_request.scene_rgb_img = self.lift_visual_data_response.scene_rgb_img
-
-            save_visual_data_request.scene_cloud_save_path = self.save_visual_data_pre_path + \
+    def get_scene_cloud_save_path(self, lift):
+        if lift:
+            scene_cloud_save_path = self.save_visual_data_pre_path + \
                     'pcd/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
                     '_grasp_' + str(self.grasp_id) + '_lift.pcd' 
-            save_visual_data_request.rgb_image_save_path = self.save_visual_data_pre_path + \
-                    'rgb_image/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
-                    '_grasp_' + str(self.grasp_id) + '_lift.png' 
-            save_visual_data_request.depth_image_save_path = self.save_visual_data_pre_path + \
-                    'depth_image/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
-                    '_grasp_' + str(self.grasp_id) + '_lift.png' 
+        else:
+            scene_cloud_save_path = self.save_visual_data_pre_path + \
+                        'pcd/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
+                        '_grasp_' + str(self.grasp_id) + '.pcd'          
+        return scene_cloud_save_path   
 
-            self.record_grasp_visual_data_client(save_visual_data_request)
-            self.lift_visual_data_response = None
+    def get_rgb_image_save_path(self, lift):
+        if lift:
+            rgb_image_save_path = self.save_visual_data_pre_path + \
+                        'rgb_image/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
+                        '_grasp_' + str(self.grasp_id) + '_lift.png'    
+        else:
+            rgb_image_save_path = self.save_visual_data_pre_path + \
+                        'rgb_image/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
+                        '_grasp_' + str(self.grasp_id) + '.png'             
+        return rgb_image_save_path
 
+    def get_depth_image_save_path(self, lift):
+        if lift:
+            depth_image_save_path = self.save_visual_data_pre_path + \
+                        'depth_image/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
+                        '_grasp_' + str(self.grasp_id) + '_lift.png'    
+        else:
+            depth_image_save_path = self.save_visual_data_pre_path + \
+                        'depth_image/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
+                        '_grasp_' + str(self.grasp_id) + '.png'             
+        return depth_image_save_path
 
     def segment_and_generate_preshape(self):
         '''
@@ -841,7 +835,7 @@ class GraspDataCollectionClient:
         self.object_world_sim_pose = None
         place_x_loc = np.random.uniform(self.place_x_min, self.place_x_max) 
         place_y_loc = np.random.uniform(self.place_y_min, self.place_y_max) 
-        z_orientation = np.random.uniform(0., 0 * np.pi)
+        z_orientation = np.random.uniform(0., 2 * np.pi)
         object_pose = [0., 0., z_orientation, place_x_loc, place_y_loc, self.table_len_z]
         rospy.loginfo('z orientation: ' + str(z_orientation*180/np.pi))
         rospy.loginfo('Generated random object pose:')

@@ -282,7 +282,7 @@ if __name__ == "__main__":
     dc_clients[0].cur_object_id = 0
     dc_clients[0].object_name = "custom_box"
     
-    while (not gym.query_viewer_has_closed(viewer)) or all_done:
+    while (not gym.query_viewer_has_closed(viewer)) and (not all_done):
 
         # step the physics
         gym.simulate(sim)
@@ -296,26 +296,27 @@ if __name__ == "__main__":
                 rospy.loginfo("**Current state: " + dc_clients[i].state)
                 rospy.loginfo('Grasp_id: %s' %str(grasp_ids[i]))
 
-                # Set random pose for the object
-                object_pose_stamped = dc_clients[i].gen_object_pose()
-                state = gym.get_actor_rigid_body_states(envs[i], object_handles[i], gymapi.STATE_NONE)    
-                state['pose']['p'].fill((object_pose_stamped.pose.position.x,object_pose_stamped.pose.position.y,object_pose_stamped.pose.position.z))
-                state['pose']['r'].fill((object_pose_stamped.pose.orientation.x,object_pose_stamped.pose.orientation.y,\
-                                         object_pose_stamped.pose.orientation.z,object_pose_stamped.pose.orientation.w))
-                gym.set_actor_rigid_body_states(envs[i], object_handles[i], state, gymapi.STATE_ALL) 
-
                 # Robot go home!
                 pos_targets = np.array([0.,0.,0.,0.,0.,0.,0.,0.,0.,0.], dtype=np.float32)
                 gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets) 
                 if check_reach_desired_position(i, pos_targets):
-                    dc_clients[i].state = "set up parameters"
+                    dc_clients[i].state = "get point cloud"
                     dc_clients[i].frame_count = 0
+                    
+                    # Set random pose for the object
+                    object_pose_stamped = dc_clients[i].gen_object_pose()
+                    state = gym.get_actor_rigid_body_states(envs[i], object_handles[i], gymapi.STATE_NONE)    
+                    state['pose']['p'].fill((object_pose_stamped.pose.position.x,object_pose_stamped.pose.position.y,object_pose_stamped.pose.position.z))
+                    state['pose']['r'].fill((object_pose_stamped.pose.orientation.x,object_pose_stamped.pose.orientation.y,\
+                                            object_pose_stamped.pose.orientation.z,object_pose_stamped.pose.orientation.w))
+                    gym.set_actor_rigid_body_states(envs[i], object_handles[i], state, gymapi.STATE_ALL) 
+
                 # print(gym.get_rigid_body_segmentation_id(env,object_handles[i], 0) )
 
-            if dc_clients[i].state == "set up parameters":
-                # dc_client.set_up_object_name(object_name=object_name, object_mesh_path=None) # Need fix object_mesh_path
-                dc_clients[i].set_up_grasp_id(grasp_ids[i])
-                dc_clients[i].state = "get point cloud"
+            # if dc_clients[i].state == "set up parameters":
+            #     # dc_client.set_up_object_name(object_name=object_name, object_mesh_path=None) # Need fix object_mesh_path
+            #     dc_clients[i].set_up_grasp_id(grasp_ids[i])
+            #     dc_clients[i].state = "get point cloud"
 
             if dc_clients[i].state == "get point cloud":
                 dc_clients[i].frame_count += 1
@@ -366,6 +367,7 @@ if __name__ == "__main__":
                                     p2 = X2*vinv  # Inverse camera view to get world coordinates
                                     points.append([p2[0, 0], p2[0, 1], p2[0, 2]])
                                     color.append(c)
+                        dc_clients[i].point_cloud = points
                         dc_clients[i].frame_count = 0
                     # v = pptk.viewer(points, color)
                     # v.color_map(color_map)
@@ -413,8 +415,14 @@ if __name__ == "__main__":
             if dc_clients[i].state == "generate preshape":
                 rospy.loginfo("**Current state: " + dc_clients[i].state)
                 pcd = open3d.geometry.PointCloud()
-                pcd.points = open3d.utility.Vector3dVector(np.array(points))
+                pcd.points = open3d.utility.Vector3dVector(np.array(dc_clients[i].point_cloud))
                 
+                # Save scene cloud, RGB image, and depth image
+                open3d.io.write_point_cloud(dc_clients[i].get_scene_cloud_save_path(lift=False), pcd) # save_grasp_visual_data , point cloud of the object
+                gym.write_camera_image_to_file(sim, envs[i], cam_handles[0], gymapi.IMAGE_COLOR, dc_clients[i].get_rgb_image_save_path(lift=False)) # Need fix, choose the right camera
+                gym.write_camera_image_to_file(sim, envs[i], cam_handles[0], gymapi.IMAGE_DEPTH, dc_clients[i].get_depth_image_save_path(lift=False)) # Need fix, choose the right camera
+
+
                 pc_ros_msg = o3dpc_GO.o3dpc_to_GraspObject_msg(pcd)  # point cloud with GraspObject msg format
                 print("bounding box pose: ", pc_ros_msg.pose)
                 print("bounding box height: ", pc_ros_msg.height)
@@ -422,18 +430,20 @@ if __name__ == "__main__":
                 print("bounding box depth: ", pc_ros_msg.depth) 
 
                 dc_clients[i].object_world_seg_pose =  pc_ros_msg.pose # Save obb pose (in Pose() ros format)        
-                preshape_response = dc_clients[i].gen_grasp_preshape_client(pc_ros_msg)
                 
+                preshape_response = dc_clients[i].gen_grasp_preshape_client(pc_ros_msg)                
                 for idx in range(len(preshape_response.palm_goal_pose_world)):  # Pick only top grasp
                     if preshape_response.is_top_grasp[idx] == True:
                         cartesian_goal = preshape_response.palm_goal_pose_world[idx].pose # Need fix
                         dc_clients[i].top_grasp_preshape_idx = idx
+                
                 cartesian_goal.position.z -= ROBOT_Z_OFFSET
                 
                 plan_traj = dc_clients[i].arm_moveit_planner_client(go_home=False, cartesian_goal=cartesian_goal, current_position=get_current_joint_states(i))
                 if (not plan_traj):
                     rospy.logerr('Can not find moveit plan to grasp. Ignore this grasp.\n')  
-                    grasp_plan_failures_nums[i] += 1 
+                    dc_clients[i].grasp_plan_failures_num += 1 
+                    dc_clients[i].state = "home"
                 else:
                     rospy.loginfo('Sucesfully found a PRESHAPE moveit plan to grasp.\n')
                     dc_clients[i].state = "move to preshape"
@@ -454,16 +464,6 @@ if __name__ == "__main__":
                     rospy.loginfo("Succesfully executed PRESHAPE moveit arm plan. Let's fucking grasp it!!")
 
 
-            
-        
-            # # Determine whether everything is done and it's time to exit out:
-            # if dc_clients[i].grasp_id >= dc_clients[i].num_grasps_per_object or grasp_plan_failures_nums[i] >= grasp_failure_retry_times:
-            #     dc_clients[i].state = "done"
-            
-            # all_done = all(dc_clients[i].state == 'done' for i in range(num_envs))
-                
-    
-            
             if dc_clients[i].state == "record true_palm_pose_world":
                 dc_clients[i].frame_count += 1
                 if dc_clients[i].frame_count == 60:   # Wait to get better tool yaw link pose
@@ -481,7 +481,7 @@ if __name__ == "__main__":
                 dof_states = gym.get_actor_dof_states(envs[i], kuka_handles[i], gymapi.STATE_POS)
                 if np.allclose(dof_states['pos'][8:], [0.5, -0.2], rtol=0, atol=0.05):
                     dc_clients[i].state = "record close_palm_pose_world"
-                    get_lift_moveit_plan = True
+                    dc_clients[i].get_lift_moveit_plan = True
                         
 
             if dc_clients[i].state == "record close_palm_pose_world":
@@ -495,16 +495,17 @@ if __name__ == "__main__":
                     print("close_palm_pose_world: ", dc_clients[i].close_palm_pose_world)
 
             if dc_clients[i].state == "lift object":                            
-                if get_lift_moveit_plan:
+                if dc_clients[i].get_lift_moveit_plan:
                     rospy.loginfo("**Current state: " + dc_clients[i].state)
                     plan_traj = dc_clients[i].lift_moveit_planner_client(current_position=get_current_joint_states(i))                            
                     if (not plan_traj):
-                        rospy.logerr('Can not find moveit plan to grasp. Ignore this grasp.\n')  
-                        dc_clients[i].state = "done" 
+                        rospy.logerr('Can not find moveit plan to LIFT. Ignore this LIFT.\n')  
+                        dc_clients[i].grasp_plan_failures_num += 1 
+                        dc_clients[i].state = "home" 
                     else:
                         rospy.loginfo('Sucesfully found a LIFT moveit plan to grasp.\n')
                         traj_index = 0
-                        get_lift_moveit_plan = False
+                        dc_clients[i].get_lift_moveit_plan = False
                 else:
                     plan_traj_with_gripper = [plan+[0.5, -0.2] for plan in plan_traj]
                     pos_targets = np.array(plan_traj_with_gripper[traj_index], dtype=np.float32)
@@ -530,18 +531,74 @@ if __name__ == "__main__":
                 object_pose = gym.get_actor_rigid_body_states(envs[i], object_handles[i], gymapi.STATE_POS)
                 dc_clients[i].grasp_label = 1 if object_pose["pose"]["p"]["z"] >= dc_clients[i].grasp_success_object_height else 0
                 dc_clients[i].record_grasp_data_client()    # Need fix grasp_preshape_idx
+                dc_clients[i].state = "save lift visual data"
+            
+            if dc_clients[i].state == "save lift visual data":
+                dc_clients[i].frame_count += 1
+                if dc_clients[i].frame_count == 2:
+                    rospy.loginfo("**Current state: " + dc_clients[i].state)
+                    color_map = np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0], [0, 1, 1], [1, 0, 1]])
+                    gym.render_all_camera_sensors(sim)
+
+                    points = []
+                    color = []
+                    print("Converting Depth images to point clouds. Have patience...")
+                    for c in range(len(cam_handles)):
+                        print("Deprojecting from camera %d" % c)
+                        # Retrieve depth and segmentation buffer
+                        depth_buffer = gym.get_camera_image(sim, envs[i], cam_handles[c], gymapi.IMAGE_DEPTH)
+                        seg_buffer = gym.get_camera_image(sim, envs[i], cam_handles[c], gymapi.IMAGE_SEGMENTATION)
+
+                        # Get the camera view matrix and invert it to transform points from camera to world
+                        # space
+                        vinv = np.linalg.inv(np.matrix(gym.get_camera_view_matrix(sim, envs[i], cam_handles[c])))
+
+                        # Get the camera projection matrix and get the necessary scaling
+                        # coefficients for deprojection
+                        proj = gym.get_camera_proj_matrix(sim, envs[i], cam_handles[c])
+                        fu = 2/proj[0, 0]
+                        fv = 2/proj[1, 1]
+
+                        # Ignore any points which originate from ground plane or empty space
+                        depth_buffer[seg_buffer == 0] = -10001
+
+                        centerU = cam_width/2
+                        centerV = cam_height/2
+                        for k in range(cam_width):
+                            for j in range(cam_height):
+                                if depth_buffer[j, k] < -10000:
+                                    continue
+                                if seg_buffer[j, k] > 0:
+                                    u = -(k-centerU)/(cam_width)  # image-space coordinate
+                                    v = (j-centerV)/(cam_height)  # image-space coordinate
+                                    d = depth_buffer[j, k]  # depth buffer value
+                                    X2 = [d*fu*u, d*fv*v, d, 1]  # deprojection vector
+                                    p2 = X2*vinv  # Inverse camera view to get world coordinates
+                                    points.append([p2[0, 0], p2[0, 1], p2[0, 2]])
+                                    color.append(c)
+                    # Save scene cloud, RGB image, and depth image (AFTER LIFT)
+                    pcd = open3d.geometry.PointCloud()
+                    pcd.points = open3d.utility.Vector3dVector(points)                    
+                    open3d.io.write_point_cloud(dc_clients[i].get_scene_cloud_save_path(lift=True), pcd) # save_grasp_visual_data , point cloud of the object
+                    gym.write_camera_image_to_file(sim, envs[i], cam_handles[0], gymapi.IMAGE_COLOR, dc_clients[i].get_rgb_image_save_path(lift=True)) # Need fix, choose the right camera
+                    gym.write_camera_image_to_file(sim, envs[i], cam_handles[0], gymapi.IMAGE_DEPTH, dc_clients[i].get_depth_image_save_path(lift=True)) # Need fix, choose the right camera                    
+                    dc_clients[i].grasp_id += 1
+                    dc_clients[i].state = "home"    
+
+
+
+
+            # Determine whether everything is done and it's time to exit out:
+            if dc_clients[i].grasp_id >= dc_clients[i].num_grasps_per_object or dc_clients[i].grasp_plan_failures_num >= dc_clients[i].max_grasp_plan_failures_num:
+                rospy.loginfo("reach max number of runs")
                 dc_clients[i].state = "done"
             
-            if dc_clients[i].state == "done":
-                rospy.loginfo("WE'RE DONE !!!")
-                dc_clients[i].state = "extra"
-
-
-
-                
-                
-            # if state == "lift object":   
             
+            if dc_clients[i].state == "done":
+                rospy.loginfo("env " + str(i) + " is done !!!" )               
+            
+            all_done = all(dc_clients[i].state == "done" for i in range(num_envs))  
+            print("grasp id: ", dc_clients[i].grasp_id)
        
             # step rendering
         gym.step_graphics(sim)
