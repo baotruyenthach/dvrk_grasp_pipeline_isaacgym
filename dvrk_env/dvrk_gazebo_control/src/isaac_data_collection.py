@@ -302,7 +302,7 @@ if __name__ == "__main__":
                 if check_reach_desired_position(i, pos_targets):
                     dc_clients[i].state = "get point cloud"
                     dc_clients[i].frame_count = 0
-                    
+
                     # Set random pose for the object
                     object_pose_stamped = dc_clients[i].gen_object_pose()
                     state = gym.get_actor_rigid_body_states(envs[i], object_handles[i], gymapi.STATE_NONE)    
@@ -592,13 +592,10 @@ if __name__ == "__main__":
             if dc_clients[i].grasp_id >= dc_clients[i].num_grasps_per_object or dc_clients[i].grasp_plan_failures_num >= dc_clients[i].max_grasp_plan_failures_num:
                 rospy.loginfo("reach max number of runs")
                 dc_clients[i].state = "done"
-            
-            
-            if dc_clients[i].state == "done":
-                rospy.loginfo("env " + str(i) + " is done !!!" )               
+                rospy.loginfo("env " + str(i) + " is done !!!" )             
             
             all_done = all(dc_clients[i].state == "done" for i in range(num_envs))  
-            print("grasp id: ", dc_clients[i].grasp_id)
+            
        
             # step rendering
         gym.step_graphics(sim)
