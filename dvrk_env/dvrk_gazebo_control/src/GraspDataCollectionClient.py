@@ -48,7 +48,7 @@ class GraspDataCollectionClient:
         self.palm_desired_world = None
         self.object_world_seg_pose = None
         self.object_world_sim_pose = None
-        self.table_len_z = 0.15  # Need fix
+        self.table_len_z = 0.03  # Need fix
         self.min_palm_dist_to_table = rospy.get_param('~min_palm_dist_to_table', 0.)
         self.min_palm_height = self.table_len_z + self.min_palm_dist_to_table
         self.max_palm_dist_to_table = rospy.get_param('~max_palm_dist_to_table', 0.05)

@@ -50,7 +50,8 @@
     <child link="psm_tool_roll_link"/>
     <origin rpy="0       0      -3.14159" xyz="0      0      0.4162"/>
     <axis xyz="-3.00000000e-05   0.00000000e+00   1.00000000e+00"/>
-    <limit effort="1000.0" lower="-3.14159" upper="3.14159" velocity="10.0"/>
+<!--    <limit effort="1000.0" lower="-3.14159" upper="3.14159" velocity="10.0"/>-->
+    <limit effort="1000.0" lower="-3.14" upper="3.14" velocity="10.0"/>
   </joint>
   <joint name="psm_tool_pitch_joint" type="revolute">
     <parent link="psm_tool_roll_link"/>
