@@ -102,7 +102,7 @@ class GenGraspPreshape():
         # Due to gravity, the hand will be lower than the goal pose for top grasps in simulation. 
         # the top grasp need a further distance from the object.
         self.hand_type = rospy.get_param('~end_effector', 'allegro')
-        self.hand_sample_dist_top = rospy.get_param('~hand_sample_dist_top', 0.005)
+        self.hand_sample_dist_top = rospy.get_param('~hand_sample_dist_top', -0.01)
         self.hand_sample_dist_side = rospy.get_param('~hand_sample_dist_side', 0.03)
         # NOTE: Set to 0.0 to turn off sampling
         self.hand_dist_var = rospy.get_param('~hand_sample_dist_var', 0)
@@ -250,13 +250,13 @@ class GenGraspPreshape():
 
        
 
-        # If the object is too short, only select top grasps.
-        obj_height = max_z_world - min_z_world
-        rospy.loginfo('##########################')
-        rospy.loginfo('Obj_height: %s' %obj_height)
-        if obj_height < self.min_object_top_dist_to_table:
-            rospy.loginfo('Object is short, only use top grasps!')
-            return [face_centers_world_frame[0]], [faces_world_frame[0]]
+        # # If the object is too short, only select top grasps.
+        # obj_height = max_z_world - min_z_world
+        # rospy.loginfo('##########################')
+        # rospy.loginfo('Obj_height: %s' %obj_height)
+        # if obj_height < self.min_object_top_dist_to_table:
+        #     rospy.loginfo('Object is short, only use top grasps!')
+        #     return [face_centers_world_frame[0]], [faces_world_frame[0]]
 
         return face_centers_world_frame, faces_world_frame    
     
@@ -399,7 +399,7 @@ class GenGraspPreshape():
 
         
         # roll = np.random.uniform(-np.pi, np.pi)
-        roll = 0*np.pi/2
+        roll = -0.05
         # roll = np.pi*(1/3)  # range from -pi/2 to pi/2
         roll_prime = np.pi/3
         x_rand = np.array([0.0, np.sin(roll_prime), np.cos(roll_prime)])

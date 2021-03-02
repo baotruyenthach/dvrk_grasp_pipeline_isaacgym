@@ -69,6 +69,9 @@ class GraspDataCollectionClient:
         self.grasp_id = 0
         self.grasp_plan_failures_num = 0
         self.max_grasp_plan_failures_num = 80
+        self.traj_index = 0
+        self.saved_object_state = None
+        self.plan_traj = None
 
         self.data_recording_path = rospy.get_param('~data_recording_path', '/home/baothach/dvrk_grasp_data/')
         self.grasp_file_name = self.data_recording_path + 'grasp_data.h5'
@@ -130,7 +133,7 @@ class GraspDataCollectionClient:
 
 
 
-    def create_moveit_scene_client(self, object_pose):
+    def create_moveit_scene_client(self, object_pose, mesh_scaling_factor = 1):
         rospy.loginfo('Waiting for service create_moveit_scene.')
         rospy.wait_for_service('create_moveit_scene')
         rospy.loginfo('Calling service create_moveit_scene.')
@@ -140,6 +143,7 @@ class GraspDataCollectionClient:
             create_scene_request.create_scene = True
             create_scene_request.object_mesh_path = self.object_mesh_path
             create_scene_request.object_pose_world = object_pose 
+            create_scene_request.mesh_scaling_factor = mesh_scaling_factor
             self.create_scene_response = create_scene_proxy(create_scene_request) 
             #print self.create_scene_response
         except (rospy.ServiceException, e):

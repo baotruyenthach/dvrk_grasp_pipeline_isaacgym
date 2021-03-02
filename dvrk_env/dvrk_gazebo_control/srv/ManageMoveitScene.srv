@@ -3,5 +3,6 @@ bool clean_scene
 GraspObject obj_seg
 geometry_msgs/PoseStamped object_pose_world
 string object_mesh_path
+float32 mesh_scaling_factor  # Resize object mesh to fit dvrk gripper
 ---
 bool success
