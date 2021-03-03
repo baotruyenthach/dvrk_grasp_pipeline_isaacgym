@@ -54,7 +54,7 @@ class GraspDataCollectionClient:
         self.max_palm_dist_to_table = rospy.get_param('~max_palm_dist_to_table', 0.05)
         self.max_palm_height = self.table_len_z + self.max_palm_dist_to_table
         self.lift_height = 0.05
-        lift_dist_suc_range = 0.01
+        lift_dist_suc_range = 0.02
         self.grasp_success_object_height = self.table_len_z + self.lift_height - lift_dist_suc_range
         self.place_x_min = -0.15
         self.place_x_max = 0.15
@@ -681,6 +681,19 @@ class GraspDataCollectionClient:
                         '_grasp_' + str(self.grasp_id) + '.pcd'          
         return scene_cloud_save_path   
 
+    def get_rgb_image_save_path_with_label(self):
+
+        if self.grasp_label == 1:
+            rgb_image_save_path = self.save_visual_data_pre_path + \
+                'gazebo_rgb_image/suc_grasps/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
+                '_grasp_' + str(self.grasp_id) + '.png' 
+        else:
+            rgb_image_save_path = self.save_visual_data_pre_path + \
+                'gazebo_rgb_image/fail_grasps/' + 'object_' + str(self.cur_object_id) + '_' + str(self.object_name) + \
+                '_grasp_' + str(self.grasp_id) + '.png'     
+                       
+        return rgb_image_save_path
+    
     def get_rgb_image_save_path(self, lift):
         if lift:
             rgb_image_save_path = self.save_visual_data_pre_path + \

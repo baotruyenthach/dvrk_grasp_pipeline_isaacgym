@@ -560,64 +560,10 @@ if __name__ == "__main__":
             if dc_clients[i].state == "save lift visual data":
                 dc_clients[i].frame_count += 1
                 if dc_clients[i].frame_count == 2:
-                    rospy.loginfo("**Current state: " + dc_clients[i].state)
-                    # Array of RGB Colors, one per camera, for dots in the resulting
-                    # point cloud. Points will have a color which indicates which camera's
-                    # depth image created the point.
-                    color_map = np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0], [0, 1, 1], [1, 0, 1]])
-
-                    # Render all of the image sensors only when we need their output here
-                    # rather than every frame.
-                    gym.render_all_camera_sensors(sim)
-
-                    points = []
-                    color = []
-                    print("Converting Depth images to point clouds. Have patience...")
-                    for c in range(len(cam_handles)):
-                        print("Deprojecting from camera %d" % c)
-                        # Retrieve depth and segmentation buffer
-                        depth_buffer = gym.get_camera_image(sim, envs[i], cam_handles[c], gymapi.IMAGE_DEPTH)
-                        seg_buffer = gym.get_camera_image(sim, envs[i], cam_handles[c], gymapi.IMAGE_SEGMENTATION)
-
-                        # Get the camera view matrix and invert it to transform points from camera to world
-                        # space
-                        vinv = np.linalg.inv(np.matrix(gym.get_camera_view_matrix(sim, envs[i], cam_handles[c])))
-
-                        # Get the camera projection matrix and get the necessary scaling
-                        # coefficients for deprojection
-                        proj = gym.get_camera_proj_matrix(sim, envs[i], cam_handles[c])
-                        fu = 2/proj[0, 0]
-                        fv = 2/proj[1, 1]
-
-                        # Ignore any points which originate from ground plane or empty space
-                        depth_buffer[seg_buffer == 1] = -10001
-
-                        centerU = cam_width/2
-                        centerV = cam_height/2
-                        for k in range(cam_width):
-                            for j in range(cam_height):
-                                if depth_buffer[j, k] < -3:
-                                    continue
-                                if seg_buffer[j, k] == 0:
-                                    u = -(k-centerU)/(cam_width)  # image-space coordinate
-                                    v = (j-centerV)/(cam_height)  # image-space coordinate
-                                    d = depth_buffer[j, k]  # depth buffer value
-                                    X2 = [d*fu*u, d*fv*v, d, 1]  # deprojection vector
-                                    p2 = X2*vinv  # Inverse camera view to get world coordinates
-                                    if p2[0, 2] > 0.005:
-                                        points.append([p2[0, 0], p2[0, 1], p2[0, 2]])
-                                        color.append(c)
-                    # Visualize:                    
-                    v = pptk.viewer(points, color)
-                    v.color_map(color_map)
-                    v.set(lookat=[0, 0, 0], r=5, theta=0.4, phi=0)
-
-                    # Save scene cloud, RGB image, and depth image (AFTER LIFT)
-                    pcd = open3d.geometry.PointCloud()
-                    pcd.points = open3d.utility.Vector3dVector(points)                    
-                    open3d.io.write_point_cloud(dc_clients[i].get_scene_cloud_save_path(lift=True), pcd) # save_grasp_visual_data , point cloud of the object
                     gym.write_camera_image_to_file(sim, envs[i], cam_handles[0], gymapi.IMAGE_COLOR, dc_clients[i].get_rgb_image_save_path(lift=True)) # Need fix, choose the right camera
-                    gym.write_camera_image_to_file(sim, envs[i], cam_handles[0], gymapi.IMAGE_DEPTH, dc_clients[i].get_depth_image_save_path(lift=True)) # Need fix, choose the right camera                    
+                    gym.write_camera_image_to_file(sim, envs[i], cam_handles[0], gymapi.IMAGE_DEPTH, dc_clients[i].get_depth_image_save_path(lift=True)) # Need fix, choose the right camera  
+                    # Save RGB image into the right folder (/suc_grasps or /fail_grasps)
+                    gym.write_camera_image_to_file(sim, envs[i], cam_handles[0], gymapi.IMAGE_COLOR, dc_clients[i].get_rgb_image_save_path_with_label()) # Need fix, choose the right camera                  
                     dc_clients[i].grasp_id += 1
                     dc_clients[i].state = "restart from home"   
                     dc_clients[i].frame_count = 0 
