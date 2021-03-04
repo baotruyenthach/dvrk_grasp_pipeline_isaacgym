@@ -138,7 +138,7 @@ if __name__ == "__main__":
 
     soft_pose = gymapi.Transform()
     soft_pose.p = gymapi.Vec3(0, 0.4, 0.03)
-    soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
+    # soft_pose.r = gymapi.Quat(0.0, 0.0, 0.707107, 0.707107)
     soft_thickness = 0.005    # important to add some thickness to the soft body to avoid interpenetrations
 
     asset_options = gymapi.AssetOptions()
@@ -461,7 +461,7 @@ if __name__ == "__main__":
                 # print(plan_traj)
                 # rospy.loginfo('Moving to this preshape goal' + str(cartesian_goal))
                  
-                plan_traj_with_gripper = [plan+[1,1] for plan in plan_traj]
+                plan_traj_with_gripper = [plan+[1.5,1] for plan in plan_traj]
                 pos_targets = np.array(plan_traj_with_gripper[dc_clients[i].traj_index], dtype=np.float32)
                 gym.set_actor_dof_position_targets(envs[i], kuka_handles[i], pos_targets)        
                 if check_reach_desired_position(i, pos_targets):
@@ -487,7 +487,9 @@ if __name__ == "__main__":
                 gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka", "psm_tool_gripper1_joint"), 0.5)
                 gym.set_joint_target_position(envs[i], gym.get_joint_handle(envs[i], "kuka", "psm_tool_gripper2_joint"), -0.2)                      
                 dof_states = gym.get_actor_dof_states(envs[i], kuka_handles[i], gymapi.STATE_POS)
-                if np.allclose(dof_states['pos'][8:], [0.5, -0.2], rtol=0, atol=0.05):
+                grip_1_vel = gym.get_joint_velocity(envs[i], gym.get_joint_handle(envs[i], "kuka", "psm_tool_gripper1_joint"))
+                grip_2_vel = gym.get_joint_velocity(envs[i], gym.get_joint_handle(envs[i], "kuka", "psm_tool_gripper2_joint"))
+                if np.allclose(dof_states['pos'][8:], [0.5, -0.2], rtol=0, atol=0.05) and grip_1_vel < 0.02 and grip_2_vel < 0.02:
                     dc_clients[i].state = "record close_palm_pose_world"
                     dc_clients[i].get_lift_moveit_plan = True
                     
@@ -551,11 +553,58 @@ if __name__ == "__main__":
                     print("lift_palm_pose_world: ", dc_clients[i].lift_palm_pose_world)
 
             if dc_clients[i].state == "record all grasp data":
-                rospy.loginfo("**Current state: " + dc_clients[i].state)
-                object_pose = gym.get_actor_rigid_body_states(envs[i], object_handles[i], gymapi.STATE_POS)
-                dc_clients[i].grasp_label = 1 if object_pose["pose"]["p"]["z"] >= dc_clients[i].grasp_success_object_height else 0
-                dc_clients[i].record_grasp_data_client()    # Need fix grasp_preshape_idx
-                dc_clients[i].state = "save lift visual data"
+                dc_clients[i].frame_count += 1
+                if dc_clients[i].frame_count == 2:                
+                    rospy.loginfo("**Current state: " + dc_clients[i].state)
+                    
+                    # Get grasp label 
+                    dc_clients[i].grasp_label = 0
+                    z_values = [x[2] for x in dc_clients[i].point_cloud]
+                    dc_clients[i].height_before_lift = max(z_values)
+                    gym.render_all_camera_sensors(sim)
+
+                    points = []
+                    print("Converting Depth images to point clouds. Have patience...")
+                    for c in range(len(cam_handles)):
+                        print("Deprojecting from camera %d" % c)
+                        # Retrieve depth and segmentation buffer
+                        depth_buffer = gym.get_camera_image(sim, envs[i], cam_handles[c], gymapi.IMAGE_DEPTH)
+                        seg_buffer = gym.get_camera_image(sim, envs[i], cam_handles[c], gymapi.IMAGE_SEGMENTATION)
+
+                        # Get the camera view matrix and invert it to transform points from camera to world
+                        # space
+                        vinv = np.linalg.inv(np.matrix(gym.get_camera_view_matrix(sim, envs[i], cam_handles[c])))
+
+                        # Get the camera projection matrix and get the necessary scaling
+                        # coefficients for deprojection
+                        proj = gym.get_camera_proj_matrix(sim, envs[i], cam_handles[c])
+                        fu = 2/proj[0, 0]
+                        fv = 2/proj[1, 1]
+
+                        # Ignore any points which originate from ground plane or empty space
+                        depth_buffer[seg_buffer == 1] = -10001
+
+                        centerU = cam_width/2
+                        centerV = cam_height/2
+                        for k in range(cam_width):
+                            if dc_clients[i].grasp_label == 1:
+                                break                            
+                            for j in range(cam_height):
+
+                                if depth_buffer[j, k] < -3:
+                                    continue
+                                if seg_buffer[j, k] == 0:
+                                    u = -(k-centerU)/(cam_width)  # image-space coordinate
+                                    v = (j-centerV)/(cam_height)  # image-space coordinate
+                                    d = depth_buffer[j, k]  # depth buffer value
+                                    X2 = [d*fu*u, d*fv*v, d, 1]  # deprojection vector
+                                    p2 = X2*vinv  # Inverse camera view to get world coordinates
+                                    if p2[0, 2] > dc_clients[i].height_before_lift + 0.03:
+                                        dc_clients[i].grasp_label = 1
+                                        break        
+                    print("This grasp is successful: ", dc_clients[i].grasp_label)                                  
+                    dc_clients[i].record_grasp_data_client()    # Need fix grasp_preshape_idx
+                    dc_clients[i].state = "save lift visual data"
             
             if dc_clients[i].state == "save lift visual data":
                 dc_clients[i].frame_count += 1

@@ -72,7 +72,7 @@
     <child link="psm_tool_gripper1_link"/>
     <origin rpy="-3.00000000e-05   0.00000000e+00  -3.14157000e+00" xyz="0  0  0"/>
     <axis xyz="2.00000000e-05   0.00000000e+00  -1.00000000e+00"/>
-    <limit effort="1" lower="-1.0" upper="1.0" velocity="0.1"/>
+    <limit effort="1" lower="-1.0" upper="2.0" velocity="0.1"/>
     <mimic joint="psm_tool_gripper2_joint" multiplier="-1"/> 
   </joint>
   <joint name="psm_tool_gripper2_joint" type="revolute">
@@ -80,7 +80,7 @@
     <child link="psm_tool_gripper2_link"/>
     <origin rpy="-3.00000000e-05   0.00000000e+00  -3.14157000e+00" xyz="0  0  0"/>
     <axis xyz="0.00000000e+00  -2.00000000e-05   1.00000000e+00"/>
-    <limit effort="1" lower="-1.0" upper="1.0" velocity="0.1"/>
+    <limit effort="1" lower="-1.0" upper="2.0" velocity="0.1"/>
   </joint>
   
 <!--  ================================================================================== -->

@@ -53,7 +53,7 @@ class GraspDataCollectionClient:
         self.min_palm_height = self.table_len_z + self.min_palm_dist_to_table
         self.max_palm_dist_to_table = rospy.get_param('~max_palm_dist_to_table', 0.05)
         self.max_palm_height = self.table_len_z + self.max_palm_dist_to_table
-        self.lift_height = 0.05
+        self.lift_height = 0.06
         lift_dist_suc_range = 0.02
         self.grasp_success_object_height = self.table_len_z + self.lift_height - lift_dist_suc_range
         self.place_x_min = -0.15
@@ -72,6 +72,7 @@ class GraspDataCollectionClient:
         self.traj_index = 0
         self.saved_object_state = None
         self.plan_traj = None
+        self.height_before_lift = None # point in point cloud with max z before lift
 
         self.data_recording_path = rospy.get_param('~data_recording_path', '/home/baothach/dvrk_grasp_data/')
         self.grasp_file_name = self.data_recording_path + 'grasp_data.h5'
